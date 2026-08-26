@@ -1,0 +1,51 @@
+[project]
+name = "lectern"
+version = "0.1.0"
+description = "Local, privacy-first AI lecture note-taking TUI for macOS"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Lectern" }]
+keywords = ["whisper", "ollama", "tui", "notes", "transcription", "local-ai"]
+
+dependencies = [
+    "textual>=0.85",
+    "rich>=13.7",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "typer>=0.12",
+    "numpy>=1.26",
+    "platformdirs>=4.2",
+    "tomlkit>=0.12",
+]
+
+[project.optional-dependencies]
+# PortAudio-backed microphone capture. Separated out because it needs a native
+# library that is not present on every machine (CI containers in particular).
+audio = ["sounddevice>=0.4.7"]
+
+[project.scripts]
+lectern = "lectern.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "textual-dev>=1.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lectern"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

@@ -1,0 +1,508 @@
+/* Lectern — one stylesheet for the whole app.
+   Spacing scale: 1 cell between related items, 2 between groups.
+   Border hierarchy: panels use `round $border`; the focused panel switches to
+   the accent colour, which is the only thing on screen that ever glows. */
+
+Screen {
+    background: $background;
+    color: $foreground;
+}
+
+/* ---------- shared primitives ---------- */
+
+.muted   { color: $text-muted; }
+.faint   { color: $text-disabled; }
+.accent  { color: $primary; }
+.ok      { color: $success; }
+.warn    { color: $warning; }
+.bad     { color: $error; }
+
+.section-title {
+    color: $text-muted;
+    text-style: bold;
+    padding: 0 1;
+    margin: 1 0 0 0;
+}
+
+.panel {
+    border: round $border;
+    background: $surface;
+    padding: 0 1;
+}
+
+.panel:focus-within {
+    border: round $primary;
+}
+
+.empty-state {
+    color: $text-disabled;
+    text-align: center;
+    padding: 2 2;
+}
+
+Footer {
+    background: $background;
+}
+
+Tooltip {
+    background: $panel;
+    color: $foreground;
+    border: round $border;
+}
+
+LoadingIndicator {
+    background: transparent;
+    color: $primary;
+}
+
+/* ---------- Home ---------- */
+
+#home-body {
+    height: 1fr;
+    padding: 1 2;
+}
+
+#home-main {
+    width: 2fr;
+    min-width: 40;
+    padding: 0 2 0 0;
+}
+
+#home-side {
+    width: 34;
+    min-width: 26;
+}
+
+#home-title {
+    color: $foreground;
+    text-style: bold;
+    padding: 1 1 0 1;
+}
+
+#home-subtitle {
+    color: $text-muted;
+    padding: 0 1 1 1;
+}
+
+#new-session-card {
+    border: round $border;
+    background: $surface;
+    height: 5;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    content-align: left middle;
+}
+
+#new-session-card:focus {
+    border: round $primary;
+    background: $panel;
+}
+
+#new-session-card:hover {
+    background: $panel;
+}
+
+#recent-list {
+    background: transparent;
+    border: none;
+    height: auto;
+    max-height: 16;
+    padding: 0;
+}
+
+#recent-list > ListItem {
+    background: transparent;
+    padding: 0 1;
+    height: 1;
+}
+
+#recent-list > ListItem.--highlight {
+    background: $panel;
+    color: $foreground;
+}
+
+#recent-list:focus > ListItem.--highlight {
+    background: $primary 25%;
+}
+
+#status-panel {
+    border: round $border;
+    background: $surface;
+    padding: 1 1;
+    height: auto;
+}
+
+.status-row {
+    height: 1;
+    padding: 0 1;
+}
+
+/* ---------- New session form ---------- */
+
+#form-wrap {
+    align: center middle;
+    height: 1fr;
+    padding: 1 2;
+}
+
+#form {
+    width: 78;
+    max-width: 100%;
+    height: auto;
+    border: round $border;
+    background: $surface;
+    padding: 1 2;
+}
+
+#form-title {
+    text-style: bold;
+    padding: 0 0 1 0;
+}
+
+.field-label {
+    color: $text-muted;
+    padding: 1 0 0 0;
+    height: 2;
+}
+
+#form Input, #form Select {
+    width: 100%;
+}
+
+Input {
+    background: $panel;
+    border: tall $border;
+    color: $foreground;
+}
+
+Input:focus {
+    border: tall $primary;
+}
+
+Select > SelectCurrent {
+    background: $panel;
+    border: tall $border;
+}
+
+Select:focus > SelectCurrent {
+    border: tall $primary;
+}
+
+SelectOverlay {
+    background: $panel;
+    border: round $primary;
+}
+
+Switch {
+    background: $panel;
+    border: tall $border;
+}
+
+Switch:focus {
+    border: tall $primary;
+}
+
+#form-buttons {
+    height: auto;
+    padding: 2 0 0 0;
+    align-horizontal: right;
+}
+
+Button {
+    border: none;
+    min-width: 14;
+    height: 3;
+    background: $panel;
+    color: $foreground;
+    margin: 0 0 0 2;
+}
+
+Button:focus {
+    text-style: bold;
+    background: $boost;
+}
+
+Button.-primary {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+Button.-primary:focus {
+    background: $primary-lighten-1;
+}
+
+.hint {
+    color: $text-disabled;
+    padding: 1 0 0 0;
+}
+
+/* ---------- Recording ---------- */
+
+#rec-header {
+    height: 4;
+    border: round $border;
+    background: $surface;
+    padding: 0 2;
+    margin: 0 1;
+}
+
+#rec-header-top { height: 1; }
+#rec-header-bottom { height: 1; }
+
+#rec-title { text-style: bold; width: 1fr; }
+#rec-course { color: $text-muted; text-align: right; width: auto; }
+#rec-state { width: auto; padding: 0 2 0 0; }
+#rec-timer { width: auto; padding: 0 3 0 0; color: $foreground; text-style: bold; }
+#rec-models { color: $text-muted; width: 1fr; text-align: right; }
+
+#rec-top {
+    height: 45%;
+    min-height: 8;
+    padding: 1 1 0 1;
+}
+
+#topics-panel {
+    width: 26;
+    min-width: 18;
+    border: round $border;
+    background: $surface;
+    padding: 0 1;
+}
+
+#transcript-panel {
+    width: 1fr;
+    border: round $border;
+    background: $surface;
+    padding: 0 1;
+    margin: 0 0 0 1;
+}
+
+#notes-panel {
+    height: 1fr;
+    border: round $border;
+    background: $surface;
+    padding: 0 1;
+    margin: 1 1 0 1;
+}
+
+#topics-panel:focus-within, #transcript-panel:focus-within, #notes-panel:focus-within {
+    border: round $primary;
+}
+
+.panel-title {
+    color: $text-muted;
+    text-style: bold;
+    height: 1;
+    padding: 0 1;
+}
+
+TranscriptView, NotesView, TopicsPanel {
+    background: transparent;
+    height: 1fr;
+    scrollbar-size-vertical: 1;
+    padding: 0 1;
+}
+
+TranscriptView:focus, NotesView:focus, TopicsPanel:focus {
+    background: transparent;
+}
+
+#transcript-jump, #notes-jump {
+    dock: bottom;
+    height: 1;
+    background: $primary;
+    color: $background;
+    text-align: center;
+    text-style: bold;
+    display: none;
+}
+
+#transcript-jump.visible, #notes-jump.visible {
+    display: block;
+}
+
+#status-bar {
+    height: 1;
+    padding: 0 2;
+    background: $background;
+    color: $text-muted;
+}
+
+/* ---------- Review ---------- */
+
+#review-header {
+    height: 3;
+    padding: 1 2 0 2;
+}
+
+#review-title { text-style: bold; width: 1fr; }
+#review-meta { color: $text-muted; width: auto; }
+
+TabbedContent {
+    height: 1fr;
+    padding: 0 1;
+}
+
+Tabs {
+    background: $background;
+}
+
+Tab {
+    color: $text-muted;
+    padding: 0 2;
+}
+
+Tab.-active {
+    color: $primary;
+    text-style: bold;
+}
+
+Underline > .underline--bar {
+    color: $primary;
+    background: $border;
+}
+
+TabPane {
+    padding: 1 2;
+    background: $background;
+}
+
+MarkdownBlock { background: transparent; }
+Markdown { background: transparent; }
+
+/* ---------- Settings ---------- */
+
+#settings-body {
+    height: 1fr;
+    padding: 1 3;
+}
+
+.settings-group {
+    border: round $border;
+    background: $surface;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.settings-group-title {
+    text-style: bold;
+    color: $primary;
+    padding: 0 0 1 0;
+}
+
+.settings-row {
+    height: auto;
+    padding: 0 0 1 0;
+}
+
+.settings-row > .field-label {
+    width: 24;
+    padding: 1 1 0 0;
+    height: 3;
+}
+
+.settings-row > Input, .settings-row > Select {
+    width: 1fr;
+}
+
+.settings-row > Switch {
+    width: auto;
+}
+
+/* ---------- Modals ---------- */
+
+ModalScreen {
+    align: center middle;
+    background: $background 60%;
+}
+
+.modal {
+    border: round $primary;
+    background: $surface;
+    padding: 1 2;
+    width: 68;
+    max-width: 90%;
+    height: auto;
+    max-height: 80%;
+}
+
+.modal-title {
+    text-style: bold;
+    padding: 0 0 1 0;
+}
+
+.modal-body {
+    color: $foreground;
+    padding: 0 0 1 0;
+    height: auto;
+}
+
+.modal-buttons {
+    height: auto;
+    align-horizontal: right;
+    padding: 1 0 0 0;
+}
+
+.modal.-danger { border: round $error; }
+.modal.-warning { border: round $warning; }
+
+#permission-steps {
+    background: $panel;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    color: $foreground;
+    height: auto;
+}
+
+#finalize-steps {
+    height: auto;
+    padding: 1 0;
+}
+
+.finalize-step { height: 1; }
+
+/* ---------- Setup wizard & doctor ---------- */
+
+#wizard-body, #doctor-body {
+    height: 1fr;
+    padding: 1 3;
+}
+
+.check-row {
+    height: auto;
+    padding: 0 0 0 0;
+}
+
+.check-remedy {
+    color: $text-disabled;
+    padding: 0 0 1 4;
+}
+
+.command {
+    background: $panel;
+    color: $secondary;
+    padding: 0 1;
+}
+
+/* ---------- Search ---------- */
+
+#search-input { margin: 0 0 1 0; }
+
+#search-results {
+    height: 1fr;
+    background: transparent;
+    border: none;
+}
+
+#search-results > ListItem {
+    background: transparent;
+    padding: 0 1;
+    height: auto;
+    border-bottom: solid $border;
+}
+
+#search-results > ListItem.--highlight {
+    background: $panel;
+}
