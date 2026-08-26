@@ -480,7 +480,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "rich", specifier = ">=13.7" },
     { name = "sounddevice", marker = "extra == 'audio'", specifier = ">=0.4.7" },
-    { name = "textual", specifier = ">=0.85" },
+    { name = "textual", specifier = ">=8.0" },
     { name = "tomlkit", specifier = ">=0.12" },
     { name = "typer", specifier = ">=0.12" },
 ]
