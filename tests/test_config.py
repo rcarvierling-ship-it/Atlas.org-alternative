@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from lectern.config import manager
 from lectern.config.models import AudioSourceKind, LecternConfig
@@ -83,8 +84,30 @@ def test_set_value_rejects_unknown_key():
 
 def test_set_value_rejects_out_of_range():
     config = LecternConfig()
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         manager.set_value(config, "notes.update_interval_seconds", "1")
+
+
+def test_set_value_rejects_an_invalid_boolean():
+    """A typo must not silently read as False and disable a feature."""
+    config = LecternConfig()
+    with pytest.raises(ValueError, match="invalid boolean"):
+        manager.set_value(config, "audio.save_recording", "treu")
+    assert config.audio.save_recording is True
+
+
+def test_saving_preserves_hand_written_comments():
+    path = paths.config_file()
+    manager.save(LecternConfig(), path)
+    path.write_text(path.read_text(encoding="utf-8") + "\n# my own note\n", encoding="utf-8")
+
+    config = manager.load(path)
+    config.ollama.notes_model = "qwen3:8b"
+    manager.save(config, path)
+
+    saved = path.read_text(encoding="utf-8")
+    assert "# my own note" in saved
+    assert manager.load(path).ollama.notes_model == "qwen3:8b"
 
 
 def test_save_is_atomic_leaves_no_temp_file():

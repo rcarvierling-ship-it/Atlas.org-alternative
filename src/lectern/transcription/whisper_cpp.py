@@ -119,16 +119,21 @@ class WhisperCppBackend(TranscriptionBackend):
 
         port = _free_port()
         self._url = f"http://127.0.0.1:{port}"
+        # Only flags that whisper.cpp's *server* accepts belong here. It has a
+        # smaller argument set than whisper-cli, and an unrecognised argument
+        # makes it print usage and exit — which looks like "the server never
+        # became ready" rather than a bad flag.
+        #
+        # Notably absent: --no-context (whisper-cli only). The server already
+        # defaults no_context to true, so each utterance is decoded
+        # independently, which is what stops decoder state carrying across
+        # chunks and causing runaway repetition.
         command = [
             str(binary),
             "--model", str(self._model_path),
             "--host", "127.0.0.1",
             "--port", str(port),
             "--language", self.language or "en",
-            # Each utterance is decoded independently: carrying decoder state
-            # across chunks is whisper.cpp's main source of runaway repetition.
-            "--no-context",
-            "--print-progress", "false",
         ]
         if self.threads > 0:
             command += ["--threads", str(self.threads)]
@@ -163,8 +168,11 @@ class WhisperCppBackend(TranscriptionBackend):
         """Forward whisper.cpp's chatter to the log file, never to the TUI."""
         if self._process is None or self._process.stderr is None:
             return
+        # Bound once: stop() clears self._process before cancelling this task,
+        # so dereferencing it inside the loop can hit None.
+        stream = self._process.stderr
         while True:
-            line = await self._process.stderr.readline()
+            line = await stream.readline()
             if not line:
                 return
             log.debug("whisper-server: %s", line.decode("utf-8", "replace").rstrip())
@@ -237,6 +245,7 @@ class WhisperCppBackend(TranscriptionBackend):
                         "temperature_inc": "0.2",
                         "response_format": "json",
                         "language": self.language or "en",
+                        # Belt and braces: the server already defaults to this.
                         "no_context": "true",
                     },
                 )

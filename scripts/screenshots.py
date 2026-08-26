@@ -78,6 +78,11 @@ async def capture(out_dir: Path) -> list[Path]:
                     and not screen.pipeline.notes.is_empty
                 ):
                     break
+            else:
+                raise RuntimeError(
+                    "the recording screen never produced transcript and notes; "
+                    "refusing to save a misleading screenshot"
+                )
             await pilot.press("m")
             await pilot.pause(0.2)
             save("recording")
@@ -91,6 +96,8 @@ async def capture(out_dir: Path) -> list[Path]:
                 await pilot.pause(0.05)
                 if isinstance(app.screen, ReviewScreen):
                     break
+            else:
+                raise RuntimeError("finalization never reached the review screen")
             await pilot.pause(0.4)
             save("review")
 

@@ -15,6 +15,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Label, Markdown, Static, TabbedContent, TabPane
 
+from lectern.llm.base import LLMError
 from lectern.logging_setup import get_logger
 from lectern.notes.finalizer import FinalizationProgress, NoteFinalizer
 from lectern.screens.modals import ConfirmModal, ExportModal, MessageModal
@@ -106,7 +107,6 @@ class ReviewScreen(Screen):
 
     def _timeline_text(self) -> Text:
         entries = list(self.session.notes.timeline)
-        markers = {marker.time: marker for marker in self.session.markers}
         for marker in self.session.markers:
             if not any(abs(entry.time - marker.time) < 0.01 for entry in entries):
                 from lectern.notes.models import TimelineEntry
@@ -131,7 +131,6 @@ class ReviewScreen(Screen):
             else:
                 rendered.append(f"{ICONS.star} ", style="#fbbf24")
                 rendered.append(f"{entry.label}\n", style="#c3c9d4")
-            _ = markers
         return rendered
 
     def _terms_text(self) -> Text:
@@ -303,10 +302,7 @@ class ReviewScreen(Screen):
             )
             return
 
-        notification = self.app.notify(
-            "Generating the final study guide…", title="Working", timeout=120
-        )
-        _ = notification
+        self.app.notify("Generating the final study guide…", title="Working", timeout=120)
 
         finalizer = NoteFinalizer(services.llm, model=model, num_ctx=config.ollama.num_ctx)
         markers = "\n".join(f"- {marker.clock} {marker.label}" for marker in self.session.markers)
@@ -315,15 +311,27 @@ class ReviewScreen(Screen):
             if progress.total:
                 self.app.notify(progress.detail, title="Working", timeout=30)
 
-        result = await finalizer.finalize(
-            state=self.session.notes,
-            transcript=transcript,
-            session_title=self.session.meta.title,
-            course=self.session.meta.course,
-            duration=format_duration(self.session.meta.duration_seconds),
-            markers=markers,
-            on_progress=on_progress,
-        )
+        try:
+            result = await finalizer.finalize(
+                state=self.session.notes,
+                transcript=transcript,
+                session_title=self.session.meta.title,
+                course=self.session.meta.course,
+                duration=format_duration(self.session.meta.duration_seconds),
+                markers=markers,
+                on_progress=on_progress,
+            )
+        except LLMError as exc:
+            log.warning("final synthesis failed: %s", exc)
+            self.app.push_screen(
+                MessageModal(
+                    f"The final study guide could not be generated: {exc}\n\n"
+                    "Your transcript and live notes are unchanged.",
+                    title="Synthesis failed",
+                    severity="error",
+                )
+            )
+            return
 
         if not result.ok:
             self.app.push_screen(

@@ -317,5 +317,5 @@ def run_app(
         try:
             asyncio.run(with_cleanup)
         except RuntimeError:  # pragma: no cover - loop already closed
-            pass
+            with_cleanup.close()
         log.info("Lectern exited")

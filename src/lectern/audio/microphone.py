@@ -40,6 +40,9 @@ class MicrophoneSource(AudioSource):
     ) -> None:
         super().__init__()
         self._device = device or resolve_device(device_name)
+        # Falling back to the default here would record a different microphone
+        # than the one the user selected, without saying so.
+        self._missing_device = device is None and bool(device_name) and self._device is None
         self._block_ms = block_ms
         self._gain = gain
         self._stream = None
@@ -51,6 +54,11 @@ class MicrophoneSource(AudioSource):
         return self._device
 
     async def start(self) -> None:
+        if self._missing_device:
+            raise AudioError(
+                f"the selected microphone is not available. "
+                f"Choose another input device in Settings."
+            )
         try:
             sd = _import_sounddevice()
         except SoundDeviceUnavailable as exc:

@@ -157,7 +157,10 @@ class SettingsScreen(Screen):
         device_select.set_options(
             [("System default", "")] + [(device.label, device.name) for device in devices]
         )
-        device_select.value = config.audio.input_device or ""
+        available = {device.name for device in devices}
+        device_select.value = (
+            config.audio.input_device if config.audio.input_device in available else ""
+        )
 
         health = await self.app.services.refresh_llm_health()
         options = [(model.name, model.name) for model in health.models]
@@ -195,8 +198,14 @@ class SettingsScreen(Screen):
             ).value.strip()
 
             config.ollama.host = self.query_one("#ollama-host", Input).value.strip() or config.ollama.host
-            config.ollama.notes_model = _select_value(self.query_one("#notes-model", Select))
-            config.ollama.final_model = _select_value(self.query_one("#final-model", Select))
+            # When Ollama is unreachable these selects hold only a placeholder;
+            # saving an unrelated field must not wipe the configured models.
+            notes_model = _select_value(self.query_one("#notes-model", Select))
+            final_model = _select_value(self.query_one("#final-model", Select))
+            if notes_model:
+                config.ollama.notes_model = notes_model
+            if final_model:
+                config.ollama.final_model = final_model
 
             config.notes.update_interval_seconds = float(
                 self.query_one("#update-interval", Input).value or 15

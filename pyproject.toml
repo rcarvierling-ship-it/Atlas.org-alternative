@@ -9,7 +9,7 @@ authors = [{ name = "Lectern" }]
 keywords = ["whisper", "ollama", "tui", "notes", "transcription", "local-ai"]
 
 dependencies = [
-    "textual>=0.85",
+    "textual>=8.0",
     "rich>=13.7",
     "httpx>=0.27",
     "pydantic>=2.7",

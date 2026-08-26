@@ -182,7 +182,9 @@ def search(
 @app.command()
 def export(
     session: Annotated[str, typer.Argument(help="Session id, id prefix or title fragment.")],
-    format: Annotated[str, typer.Option("--format", "-f", help="markdown | text | json.")] = "markdown",
+    export_format: Annotated[
+        str, typer.Option("--format", "-f", help="markdown | text | json.")
+    ] = "markdown",
     out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output file or directory.")] = None,
 ) -> None:
     """Export a session."""
@@ -191,7 +193,7 @@ def export(
     manager = _session_manager()
     try:
         try:
-            get_exporter(format)
+            get_exporter(export_format)
         except ValueError as exc:
             error_console.print(f"[red]{exc}[/]")
             raise typer.Exit(1) from exc
@@ -204,7 +206,7 @@ def export(
         if loaded is None:
             error_console.print(f"[red]Session folder missing for[/] {meta.id}")
             raise typer.Exit(1)
-        path = export_session(loaded, format_id=format, destination=out)
+        path = export_session(loaded, format_id=export_format, destination=out)
         message = Text("Exported ", style="green")
         message.append(meta.display_title)
         message.append(f" → {path}")

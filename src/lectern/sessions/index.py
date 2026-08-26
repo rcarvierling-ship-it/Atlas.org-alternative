@@ -149,7 +149,9 @@ class SessionIndex:
                     utcnow().isoformat(),
                 ),
             )
-            if fts5_available() and (transcript or notes):
+            # Always refresh, even with empty content: the row also carries the
+            # title and course, and a stale row would otherwise survive.
+            if fts5_available():
                 self._connection.execute(
                     "DELETE FROM session_fts WHERE session_id = ?", (meta.id,)
                 )

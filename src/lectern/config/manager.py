@@ -15,7 +15,10 @@ from typing import Any
 import tomlkit
 
 from lectern.config.models import LecternConfig
+from lectern.logging_setup import get_logger
 from lectern.utils import paths
+
+log = get_logger("config")
 
 HEADER_COMMENT = """\
 # Lectern configuration.
@@ -45,17 +48,26 @@ def save(config: LecternConfig, path: Path | None = None) -> Path:
     path = path or paths.config_file()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    document = tomlkit.document()
-    if not path.exists():
+    # Round-trip an existing file so hand-written comments survive a save.
+    document = None
+    if path.exists():
+        try:
+            document = tomlkit.parse(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001 - a corrupt file is rewritten
+            log.warning("could not parse %s (%s); rewriting it", path, exc)
+    if document is None:
+        document = tomlkit.document()
         for line in HEADER_COMMENT.splitlines():
             document.add(tomlkit.comment(line.lstrip("#").strip()))
         document.add(tomlkit.nl())
 
     for section, values in config.to_toml_dict().items():
-        table = tomlkit.table()
+        table = document.get(section)
+        if table is None:
+            table = tomlkit.table()
+            document[section] = table
         for key, value in values.items():
             table[key] = value
-        document[section] = table
 
     tmp = path.with_suffix(".toml.tmp")
     tmp.write_text(tomlkit.dumps(document), encoding="utf-8")
@@ -92,7 +104,15 @@ def set_value(config: LecternConfig, dotted_key: str, value: str) -> LecternConf
     current = getattr(section, key)
     coerced: Any = value
     if isinstance(current, bool):
-        coerced = value.strip().lower() in {"1", "true", "yes", "on"}
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            coerced = True
+        elif normalized in {"0", "false", "no", "off"}:
+            coerced = False
+        else:
+            # Silently reading a typo as False would, for example, turn off
+            # recording without saying so.
+            raise ValueError(f"invalid boolean for {dotted_key!r}: {value!r}")
     elif isinstance(current, int) and not isinstance(current, bool):
         coerced = int(value)
     elif isinstance(current, float):

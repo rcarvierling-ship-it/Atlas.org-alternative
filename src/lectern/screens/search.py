@@ -28,7 +28,11 @@ class HitRow(ListItem):
             rendered.append(f"  {ICONS.dot}  {self.hit.course}", style="#8b919e")
         rendered.append(f"  {format_relative(self.hit.created_at)}\n", style="#5f6672")
         for snippet in self.hit.snippets[:2]:
-            rendered.append(f"  {_highlight(snippet)}\n", style="#a5abb8")
+            rendered.append("  ", style="#a5abb8")
+            highlighted = _highlight(snippet)
+            highlighted.stylize("#a5abb8", 0, len(highlighted))
+            rendered.append_text(highlighted)
+            rendered.append("\n")
         yield Static(rendered)
 
 

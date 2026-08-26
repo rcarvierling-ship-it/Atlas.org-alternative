@@ -109,11 +109,22 @@ class AudioSource(abc.ABC):
                 pass
 
     def _close_stream(self) -> None:
-        """Send the sentinel that terminates ``frames()``."""
-        try:
-            self._queue.put_nowait(None)
-        except asyncio.QueueFull:  # pragma: no cover
-            pass
+        """Send the sentinel that terminates ``frames()``.
+
+        The sentinel must land even on a full queue. Dropping it would leave
+        every ``frames()`` consumer — the pipeline's audio task, or a mixer leg —
+        waiting forever on a stream that has already stopped, so old blocks are
+        evicted until there is room.
+        """
+        while True:
+            try:
+                self._queue.put_nowait(None)
+                return
+            except asyncio.QueueFull:
+                try:
+                    self._queue.get_nowait()
+                except asyncio.QueueEmpty:  # pragma: no cover - racing consumer
+                    continue
 
     async def frames(self) -> AsyncIterator[np.ndarray]:
         """Yield captured blocks until the source stops."""

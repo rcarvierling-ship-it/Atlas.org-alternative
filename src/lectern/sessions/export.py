@@ -28,8 +28,9 @@ class Exporter(abc.ABC):
         """Produce the file's contents."""
 
     def write(self, session: LoadedSession, path: Path) -> Path:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.render(session), encoding="utf-8")
+        from lectern.sessions.storage import write_atomic
+
+        write_atomic(path, self.render(session))
         return path
 
     def default_filename(self, session: LoadedSession) -> str:

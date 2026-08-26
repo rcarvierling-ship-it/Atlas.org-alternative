@@ -74,6 +74,11 @@ class SystemAudioSource(AudioSource):
         self._reader_task: asyncio.Task[None] | None = None
         self._stderr_task: asyncio.Task[None] | None = None
         self._last_error: str = ""
+        #: Bytes of an incomplete float32 sample carried to the next read. A
+        #: pipe read can end mid-sample, and discarding the tail would shift
+        #: every following sample by 1-3 bytes — permanent misalignment, and
+        #: noise rather than speech from there on.
+        self._pcm_remainder = b""
 
     async def start(self) -> None:
         if self._helper_path is None:
@@ -120,11 +125,14 @@ class SystemAudioSource(AudioSource):
         stream = self._process.stdout
         try:
             while self._running:
-                data = await stream.read(block_bytes)
-                if not data:
+                chunk = await stream.read(block_bytes)
+                if not chunk:
                     break
-                # Guard against a partial frame at the tail of a read.
+                data = self._pcm_remainder + chunk
+                # Keep any partial sample at the tail for the next read rather
+                # than discarding it, which would misalign the whole stream.
                 usable = len(data) - (len(data) % BYTES_PER_SAMPLE)
+                self._pcm_remainder = data[usable:]
                 block = np.frombuffer(data[:usable], dtype="<f4").astype(np.float32)
                 if self._gain != 1.0:
                     block = np.clip(block * self._gain, -1.0, 1.0)

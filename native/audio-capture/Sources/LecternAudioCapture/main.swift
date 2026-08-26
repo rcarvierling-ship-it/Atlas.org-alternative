@@ -256,7 +256,13 @@ let options = Options.parse(Array(CommandLine.arguments.dropFirst()))
 let capture = AudioCapture(options: options)
 
 // Terminate cleanly when Lectern stops the session.
+//
+// The sources are held in a process-lifetime array. Relying on
+// withExtendedLifetime inside the loop would release them as soon as the
+// iteration ended, leaving SIGINT and SIGTERM merely ignored — so Lectern's
+// terminate() would do nothing and every stop would wait out its kill timeout.
 let signalQueue = DispatchQueue(label: "com.lectern.audio-capture.signals")
+var signalSources: [DispatchSourceSignal] = []
 for signalNumber in [SIGINT, SIGTERM] {
     signal(signalNumber, SIG_IGN)
     let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: signalQueue)
@@ -267,8 +273,7 @@ for signalNumber in [SIGINT, SIGTERM] {
         }
     }
     source.resume()
-    // Keep the source alive for the process lifetime.
-    withExtendedLifetime(source) {}
+    signalSources.append(source)
 }
 
 Task {

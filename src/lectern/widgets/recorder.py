@@ -33,7 +33,7 @@ class RecorderHeader(Static):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="rec-header-top"):
-            yield Static("LECTERN", id="rec-title")
+            yield Static(self._title, id="rec-title")
             yield Static(self._course_label(), id="rec-course")
         with Horizontal(id="rec-header-bottom"):
             yield Static("", id="rec-state")
@@ -44,9 +44,8 @@ class RecorderHeader(Static):
         self.refresh_status(self._status)
 
     def _course_label(self) -> str:
-        if self._course:
-            return f"{self._title}  {ICONS.dot}  {self._course}"
-        return self._title
+        """The course sits in the quiet slot; the title is the bold one."""
+        return self._course
 
     def _models_label(self) -> str:
         parts = []

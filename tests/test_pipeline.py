@@ -268,7 +268,9 @@ async def test_crash_midway_leaves_a_recoverable_session(
         notes_model="qwen3:8b",
     )
     await pipeline.start()
+    deadline = asyncio.get_running_loop().time() + 30
     while len(pipeline.segments) < 3:
+        assert asyncio.get_running_loop().time() < deadline, "timed out waiting for 3 segments"
         await asyncio.sleep(0.05)
 
     # Hard stop: cancel every task without any graceful shutdown.

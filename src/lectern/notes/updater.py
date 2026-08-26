@@ -66,9 +66,10 @@ def apply_update_payload(
     if current_topic:
         if state.add_topic(current_topic, timestamp=timestamp):
             new_topics.append(current_topic)
+            changed = True
         if state.current_topic != current_topic:
             state.current_topic = current_topic
-        changed = True
+            changed = True
 
     for name in BULLET_FIELDS:
         items = [

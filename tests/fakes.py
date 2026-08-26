@@ -128,7 +128,7 @@ class FakeWhisperServer(FakeServer):
     """
 
     def __init__(self, lines: list[str] | None = None, *, fail_after: int | None = None) -> None:
-        self.lines = list(lines or DEFAULT_TRANSCRIPT_LINES)
+        self.lines = list(DEFAULT_TRANSCRIPT_LINES if lines is None else lines)
         self.fail_after = fail_after
         self.call_count = 0
         self._lock = threading.Lock()

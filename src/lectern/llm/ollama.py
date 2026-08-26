@@ -91,9 +91,14 @@ class OllamaBackend(LLMBackend):
         except ValueError as exc:
             raise LLMError(f"Ollama returned an unreadable model list: {exc}") from exc
 
+        if not isinstance(payload, dict):
+            raise LLMError("Ollama returned an unreadable model list: expected a JSON object")
+
         models: list[LLMModel] = []
         for entry in payload.get("models", []):
-            details = entry.get("details") or {}
+            if not isinstance(entry, dict):
+                continue
+            details = entry.get("details") if isinstance(entry.get("details"), dict) else {}
             models.append(
                 LLMModel(
                     name=str(entry.get("name", "")),

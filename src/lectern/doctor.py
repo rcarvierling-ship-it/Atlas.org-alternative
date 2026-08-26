@@ -8,6 +8,7 @@ diagnostic tool that crashes on a broken environment is useless.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import platform
 import shutil
@@ -205,8 +206,19 @@ async def check_ollama(config: LecternConfig) -> tuple[Check, Check]:
     backend = OllamaBackend(config.ollama.host)
     try:
         health = await backend.health()
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must never raise
+        return (
+            Check(
+                name="Ollama",
+                status=CheckStatus.FAIL,
+                detail=f"unexpected error: {exc}",
+                remedy="ollama serve",
+            ),
+            Check(name="Ollama model", status=CheckStatus.UNKNOWN, detail="could not check"),
+        )
     finally:
-        await backend.close()
+        with contextlib.suppress(Exception):
+            await backend.close()
 
     if not health.available:
         daemon = Check(
@@ -255,6 +267,40 @@ async def check_ollama(config: LecternConfig) -> tuple[Check, Check]:
             remedy=f"ollama pull {configured}",
         )
     return daemon, model
+
+
+def check_local_only(config: LecternConfig) -> Check:
+    """Warn when audio or transcripts would leave this machine.
+
+    Not an error: running Ollama on your own second Mac is a reasonable setup.
+    But Lectern's privacy claim is "everything stays local", so a host that is
+    not loopback has to be stated rather than assumed away.
+    """
+    from lectern.llm.ollama import is_local_host
+
+    remote: list[str] = []
+    if config.ollama.host and not is_local_host(config.ollama.host):
+        remote.append(f"notes → {config.ollama.host}")
+    if config.transcription.server_url and not is_local_host(config.transcription.server_url):
+        remote.append(f"speech → {config.transcription.server_url}")
+
+    if not remote:
+        return Check(
+            name="Local only",
+            status=CheckStatus.OK,
+            detail="audio, transcripts and notes stay on this machine",
+            required=False,
+        )
+    return Check(
+        name="Local only",
+        status=CheckStatus.WARN,
+        detail="; ".join(remote),
+        remedy=(
+            "This sends your audio or transcript to another machine. Point "
+            "ollama.host / transcription.server_url at localhost to keep everything here."
+        ),
+        required=False,
+    )
 
 
 def check_microphone() -> Check:
@@ -422,6 +468,7 @@ async def run_all(config: LecternConfig | None = None) -> DoctorReport:
     report.checks.append(await asyncio.to_thread(check_ffmpeg))
     report.checks.append(await asyncio.to_thread(check_build_tools))
     report.checks.append(check_config())
+    report.checks.append(check_local_only(config))
     report.checks.append(await asyncio.to_thread(check_storage))
     return report
 

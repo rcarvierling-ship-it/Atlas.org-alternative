@@ -13,10 +13,9 @@ Rules:
   waking a model to process "um, okay, so" is wasted latency.
 * Run early when a lot of speech has piled up, so a fast talker does not sit
   behind the interval.
-* Prefer to cut at a sentence boundary, so the model is not handed half a
-  clause.
-* Never hand the model more than ``max_context_words`` at once. The remainder
-  stays buffered — the transcript is never dropped, only deferred.
+* Never hand the model more than ``max_context_words`` at once, and cut only
+  on a segment boundary so the model is never handed half an utterance. The
+  remainder stays buffered — the transcript is never dropped, only deferred.
 """
 
 from __future__ import annotations
@@ -31,10 +30,6 @@ from lectern.utils.text import word_count
 
 #: Multiple of ``min_new_words`` that triggers an update before the interval.
 EARLY_TRIGGER_MULTIPLE = 6
-
-#: A pause longer than this between segments reads as a natural boundary
-#: (slide change, "any questions?"), a good moment to update.
-BOUNDARY_SILENCE_SECONDS = 2.5
 
 
 @dataclass(slots=True)
@@ -65,7 +60,6 @@ class NoteScheduler:
     _inflight_markers: list[str] = field(default_factory=list, init=False)
     _last_update: float = field(default=0.0, init=False)
     _last_consolidate: float = field(default=0.0, init=False)
-    _last_segment_end: float = field(default=0.0, init=False)
     _running: bool = field(default=False, init=False)
     _forced: bool = field(default=False, init=False)
 
@@ -80,7 +74,6 @@ class NoteScheduler:
         if not segment.is_final or not segment.text.strip():
             return
         self._pending.append(segment)
-        self._last_segment_end = segment.end_time
 
     def add_marker(self, label: str, timestamp: float) -> None:
         """Attach a marker so the next update knows the student flagged this moment."""

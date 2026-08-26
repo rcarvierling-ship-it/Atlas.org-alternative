@@ -97,7 +97,12 @@ class NewSessionScreen(Screen):
             device_select.set_options(
                 [("System default", "")] + [(device.label, device.name) for device in devices]
             )
-            device_select.value = config.audio.input_device if config.audio.input_device else ""
+            # A device saved on another day may be unplugged now; assigning a
+            # value outside the options raises and aborts this worker.
+            available = {device.name for device in devices}
+            device_select.value = (
+                config.audio.input_device if config.audio.input_device in available else ""
+            )
         else:
             device_select.set_options([("No input devices found", "")])
             device_select.disabled = True

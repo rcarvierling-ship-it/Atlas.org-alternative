@@ -68,8 +68,29 @@ def find_recoverable(manager: SessionManager) -> list[RecoverableSession]:
     Reads the folders rather than trusting the index, so a session that was
     written while the index was unavailable is still recoverable.
     """
+    candidates: dict[str, SessionMeta] = {
+        meta.id: meta for meta in manager.incomplete_sessions()
+    }
+
+    # The folders are the source of truth. A session written while the index
+    # was unavailable has no row at all, and trusting the index alone would
+    # leave it unrecoverable.
+    if manager.root.exists():
+        for folder in sorted(manager.root.iterdir()):
+            if folder.name in candidates or not (folder / "session.json").exists():
+                continue
+            try:
+                meta = SessionStore(folder).load_meta()
+            except Exception as exc:  # noqa: BLE001 - unreadable folder, skip it
+                log.warning("skipping unreadable session at %s: %s", folder, exc)
+                continue
+            if meta.status in (SessionStatus.RECORDING, SessionStatus.INCOMPLETE):
+                log.info("found unindexed interrupted session %s", meta.id)
+                manager.index.upsert(meta)
+                candidates[meta.id] = meta
+
     recoverable: list[RecoverableSession] = []
-    for meta in manager.incomplete_sessions():
+    for meta in candidates.values():
         store = SessionStore(meta.folder)
         if not store.has_meta():
             log.warning("dropping index entry for missing session %s", meta.id)

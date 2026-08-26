@@ -190,6 +190,7 @@ class RecordingPipeline:
         self._paused = False
         self._stopping = False
         self._last_partial_at = 0.0
+        self._partial_task: asyncio.Task[None] | None = None
         self._notes_updating = False
         self._notes_last_update: float | None = None
         self._notes_available = llm is not None
@@ -311,6 +312,12 @@ class RecordingPipeline:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await audio_task
 
+        if self._partial_task is not None:
+            self._partial_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._partial_task
+            self._partial_task = None
+
         # Sentinel tells the transcription task to finish the queue and exit.
         # It must actually land: dropping it on a full queue leaves the worker
         # blocked on an empty queue once it has drained, so finishing appears
@@ -380,7 +387,7 @@ class RecordingPipeline:
                 for utterance in self._segmenter.feed(block):
                     self._enqueue_utterance(utterance)
 
-                await self._maybe_partial()
+                self._maybe_start_partial()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -417,19 +424,27 @@ class RecordingPipeline:
             return False
         return True
 
-    async def _maybe_partial(self) -> None:
-        """Decode an unstable hypothesis for the utterance being spoken.
+    def _maybe_start_partial(self) -> None:
+        """Kick off a preview decode for the utterance being spoken.
 
         Partials are display-only: they are never persisted and never sent to
         the note model, because unstable text would poison the notes. They are
         skipped whenever whisper.cpp already has finalized work queued —
         finished speech always outranks a preview.
+
+        The decode runs in its own task rather than inline. Awaiting it here
+        would stop this coroutine consuming ``source.frames()`` for the length
+        of a decode, and the source drops its oldest blocks when its queue
+        fills — losing captured audio for the sake of a preview inverts the
+        transcript-priority rule.
         """
         if not self.config.transcription.partials or not self.config.ui.show_partials:
             return
         if self.callbacks.on_partial is None or not self._segmenter.in_speech:
             return
         if self._utterances.qsize() > 0:
+            return
+        if self._partial_task is not None and not self._partial_task.done():
             return
 
         now = time.monotonic()
@@ -440,10 +455,16 @@ class RecordingPipeline:
             return
 
         self._last_partial_at = now
+        self._partial_task = asyncio.create_task(self._decode_partial(pending), name="partial")
+
+    async def _decode_partial(self, pending: np.ndarray) -> None:
         try:
             text = await self.transcriber.transcribe(pending)
-        except TranscriptionError as exc:
+        except (TranscriptionError, asyncio.CancelledError) as exc:
             log.debug("partial decode failed (ignored): %s", exc)
+            return
+        except Exception as exc:  # noqa: BLE001 - a preview must never break a session
+            log.debug("partial decode error (ignored): %s", exc)
             return
         if text and self._segmenter.in_speech:
             self._safe(self.callbacks.on_partial, text)
@@ -627,7 +648,14 @@ class RecordingPipeline:
         """Record a flagged moment; it reaches the notes, timeline and final synthesis."""
         marker = Marker(time=self.elapsed, kind=kind, text=text.strip())
         self.markers.append(marker)
-        self.store.save_markers(self.markers)
+        try:
+            self.store.save_markers(self.markers)
+        except OSError as exc:
+            log.error("could not save markers: %s", exc)
+            self._report_error(
+                "Storage",
+                f"Saving your marker failed: {exc}. The recording is still running.",
+            )
 
         self.notes.add_timeline_entry(
             TimelineEntry(

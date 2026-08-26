@@ -33,10 +33,10 @@ class SessionsScreen(Screen):
 
     def on_mount(self) -> None:
         self._sessions = self.app.services.sessions.all_sessions()
-        self._render(self._sessions)
+        self._render_rows(self._sessions)
         self.query_one("#search-results", ListView).focus()
 
-    def _render(self, sessions: list[SessionMeta]) -> None:
+    def _render_rows(self, sessions: list[SessionMeta]) -> None:
         listing = self.query_one("#search-results", ListView)
         listing.clear()
         if not sessions:
@@ -51,9 +51,9 @@ class SessionsScreen(Screen):
     def _filter(self, event: Input.Changed) -> None:
         needle = event.value.strip().lower()
         if not needle:
-            self._render(self._sessions)
+            self._render_rows(self._sessions)
             return
-        self._render(
+        self._render_rows(
             [
                 meta
                 for meta in self._sessions

@@ -143,8 +143,9 @@ class NoteFinalizer:
                     on_progress=on_progress,
                 )
                 chunks_used = 1
+                overflowed = False
             else:
-                markdown, chunks_used = await self._map_reduce(
+                markdown, chunks_used, overflowed = await self._map_reduce(
                     state=state,
                     transcript=transcript,
                     session_title=session_title,
@@ -165,6 +166,12 @@ class NoteFinalizer:
             markdown=markdown,
             title=extract_title(markdown, session_title),
             chunks_used=chunks_used,
+            partial_sections=(
+                ["the lecture was too long to reduce fully; earlier material may be summarised "
+                 "more briefly than the rest"]
+                if overflowed
+                else []
+            ),
         )
 
     async def _single_pass(
@@ -205,7 +212,7 @@ class NoteFinalizer:
         duration: str,
         markers: str,
         on_progress: ProgressCallback | None,
-    ) -> tuple[str, int]:
+    ) -> tuple[str, int, bool]:
         chunks = chunk_transcript(transcript, max_words=self.chunk_budget_words)
         total = len(chunks)
         log.info("long transcript: reducing %d chunks", total)
@@ -256,6 +263,15 @@ class NoteFinalizer:
                 merged.append(strip_markdown_fence(text))
             combined = "\n\n".join(merged)
 
+        overflowed = word_count(combined) > self.chunk_budget_words
+        if overflowed:
+            log.warning(
+                "merged summaries still exceed the context budget (%d > %d words); "
+                "the study guide may omit earlier material",
+                word_count(combined),
+                self.chunk_budget_words,
+            )
+
         _emit(on_progress, FinalizationProgress(step="synthesize", detail="Creating final study guide"))
         final = await self.backend.generate(
             build_reduce_prompt(
@@ -275,7 +291,7 @@ class NoteFinalizer:
             temperature=0.3,
             num_ctx=self.num_ctx,
         )
-        return final, total
+        return final, total, overflowed
 
 
 def _emit(callback: ProgressCallback | None, progress: FinalizationProgress) -> None:

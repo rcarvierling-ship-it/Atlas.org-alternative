@@ -76,7 +76,9 @@ def looks_like_hallucination(text: str) -> bool:
     if re.fullmatch(r"\[?\(?\s*(music|silence|applause|blank[ _]audio|inaudible)\s*\)?\]?", cleaned):
         return True
     for pattern in HALLUCINATION_PATTERNS:
-        if pattern in cleaned:
+        # `cleaned` has punctuation stripped, so patterns like "amara.org" or
+        # "you're watching" only match once normalized the same way.
+        if normalize_for_compare(pattern) in cleaned:
             return True
     # A single repeated token ("you you you you") is a classic decode loop.
     tokens = cleaned.split()
