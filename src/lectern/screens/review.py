@@ -9,11 +9,11 @@ synthesis that failed or was never run.
 from __future__ import annotations
 
 from rich.text import Text
-from textual import on, work
+from textual import work
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Footer, Label, Markdown, Static, TabbedContent, TabPane
+from textual.widgets import Footer, Markdown, Static, TabbedContent, TabPane
 
 from lectern.llm.base import LLMError
 from lectern.logging_setup import get_logger

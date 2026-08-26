@@ -50,7 +50,7 @@ def _lowpass(audio: np.ndarray, *, cutoff: float, sample_rate: int, taps: int = 
     """Zero-phase-ish FIR low-pass using a Hamming-windowed sinc kernel."""
     if audio.size < taps:
         return audio
-    normalized = min(0.99, cutoff / (sample_rate / 2.0)) / 2.0 * 2.0
+    normalized = min(0.99, cutoff / (sample_rate / 2.0))
     n = np.arange(taps, dtype=np.float64) - (taps - 1) / 2.0
     kernel = np.sinc(normalized * n) * np.hamming(taps)
     kernel /= kernel.sum()
@@ -59,18 +59,24 @@ def _lowpass(audio: np.ndarray, *, cutoff: float, sample_rate: int, taps: int = 
 
 def mix(*tracks: np.ndarray, gains: tuple[float, ...] | None = None) -> np.ndarray:
     """Sum equal-rate mono tracks, zero-padding to the longest, with soft clipping."""
-    tracks = tuple(np.asarray(t, dtype=np.float32) for t in tracks if t is not None and t.size)
-    if not tracks:
-        return np.zeros(0, dtype=np.float32)
     if gains is None:
         gains = tuple(1.0 for _ in tracks)
+    # Pair before filtering: dropping an empty track without dropping its gain
+    # would shift every later gain onto the wrong track.
+    pairs = [
+        (np.asarray(track, dtype=np.float32), float(gain))
+        for track, gain in zip(tracks, gains, strict=False)
+        if track is not None and np.asarray(track).size
+    ]
+    if not pairs:
+        return np.zeros(0, dtype=np.float32)
 
-    length = max(t.size for t in tracks)
+    length = max(track.size for track, _ in pairs)
     total = np.zeros(length, dtype=np.float32)
-    for track, gain in zip(tracks, gains, strict=False):
+    for track, gain in pairs:
         padded = np.zeros(length, dtype=np.float32)
         padded[: track.size] = track
-        total += padded * float(gain)
+        total += padded * gain
     return np.clip(total, -1.0, 1.0)
 
 

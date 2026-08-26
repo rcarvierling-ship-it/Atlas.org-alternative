@@ -136,9 +136,12 @@ and torn down with the session. Users who run their own can point
 `transcription.server_url` at it, in which case Lectern attaches and never
 touches the process lifecycle.
 
-Decoding uses `--no-context` so decoder state never carries across utterances
-(whisper.cpp's main source of runaway repetition), and known silence
-hallucinations are filtered before a segment can reach the transcript.
+Each `/inference` request sets `no_context`, so decoder state never carries
+across utterances (whisper.cpp's main source of runaway repetition). It is sent
+per request rather than as a startup flag: `whisper-server` does not accept
+`--no-context`, and exits on an argument it does not recognise, so
+`build_server_command` stays minimal on purpose. Known silence hallucinations
+are filtered before a segment can reach the transcript.
 
 `TranscriptSegment` is the unit of currency for the whole application. Only
 *final* segments are persisted or sent to the LLM; partial hypotheses are

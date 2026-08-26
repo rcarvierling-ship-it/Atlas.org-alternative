@@ -7,7 +7,6 @@ import json
 from lectern.notes.models import NoteItem, NoteState
 from lectern.sessions import recovery
 from lectern.sessions.export import export_session, get_exporter
-from lectern.sessions.manager import SessionManager
 from lectern.sessions.models import Marker, MarkerKind, SessionStatus
 from lectern.sessions.storage import SessionStore, session_folder_name
 from lectern.transcription.base import TranscriptSegment

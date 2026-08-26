@@ -20,7 +20,7 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Static
 
-from lectern.notes.models import BULLET_FIELDS, SECTION_TITLES, TERM_FIELDS, NoteState
+from lectern.notes.models import SECTION_TITLES, TERM_FIELDS, NoteState
 from lectern.theme import ICONS
 
 #: Order sections appear in the live pane — most useful during a lecture first.

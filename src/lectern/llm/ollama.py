@@ -60,12 +60,14 @@ class OllamaBackend(LLMBackend):
 
     # -- introspection -----------------------------------------------------
     async def health(self) -> LLMHealth:
-        client = self._get_client()
         try:
+            # Client construction itself raises InvalidURL for a malformed host,
+            # and InvalidURL is not an HTTPError — so it has to be built in here.
+            client = self._get_client()
             response = await client.get("/api/version", timeout=3.0)
             response.raise_for_status()
             version = str(response.json().get("version", ""))
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             log.info("ollama health check failed: %s", exc)
             return LLMHealth(available=False, detail=OLLAMA_MISSING_HINT)
         except (ValueError, KeyError):
@@ -81,12 +83,12 @@ class OllamaBackend(LLMBackend):
         return LLMHealth(available=True, detail=detail, version=version, models=models)
 
     async def list_models(self) -> list[LLMModel]:
-        client = self._get_client()
         try:
+            client = self._get_client()
             response = await client.get("/api/tags", timeout=10.0)
             response.raise_for_status()
             payload = response.json()
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             raise LLMUnavailableError(OLLAMA_MISSING_HINT) from exc
         except ValueError as exc:
             raise LLMError(f"Ollama returned an unreadable model list: {exc}") from exc
@@ -94,15 +96,25 @@ class OllamaBackend(LLMBackend):
         if not isinstance(payload, dict):
             raise LLMError("Ollama returned an unreadable model list: expected a JSON object")
 
+        # "models" can be absent, null, or the wrong type. A bare .get(key, [])
+        # only covers the first of those, and the other two reach the loop as a
+        # TypeError, which is not an LLMError and so escapes health().
+        entries = payload.get("models") or []
+        if not isinstance(entries, list):
+            raise LLMError("Ollama returned an unreadable model list: 'models' is not a list")
+
         models: list[LLMModel] = []
-        for entry in payload.get("models", []):
+        for entry in entries:
             if not isinstance(entry, dict):
                 continue
             details = entry.get("details") if isinstance(entry.get("details"), dict) else {}
+            # size feeds arithmetic in LLMModel.size_label, so a string would
+            # only fail later, at render time.
+            size = entry.get("size")
             models.append(
                 LLMModel(
                     name=str(entry.get("name", "")),
-                    size_bytes=entry.get("size"),
+                    size_bytes=size if isinstance(size, int) and not isinstance(size, bool) else None,
                     family=str(details.get("family", "")),
                     parameter_size=str(details.get("parameter_size", "")),
                     quantization=str(details.get("quantization_level", "")),

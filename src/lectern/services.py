@@ -13,8 +13,8 @@ from pathlib import Path
 
 from lectern.config import manager as config_manager
 from lectern.config.models import LecternConfig
+from lectern.llm import build_backend
 from lectern.llm.base import LLMBackend, LLMHealth
-from lectern.llm.ollama import OllamaBackend
 from lectern.logging_setup import get_logger
 from lectern.sessions.manager import SessionManager
 from lectern.theme import configure_icons
@@ -60,6 +60,8 @@ class AppServices:
     #: Auto-start is attempted at most once per run, so a machine without
     #: Ollama does not pay the probe on every health refresh.
     _autostart_attempted: bool = field(default=False, repr=False)
+    #: Backends replaced by a config change, awaiting an async close.
+    _retired_llms: list[LLMBackend] = field(default_factory=list, repr=False)
 
     @classmethod
     def create(cls, *, config_path: Path | None = None) -> AppServices:
@@ -76,13 +78,28 @@ class AppServices:
 
     @property
     def llm(self) -> LLMBackend:
+        """The configured local backend, built through the registry.
+
+        Going through ``build_backend`` rather than naming ``OllamaBackend``
+        here is what makes registering a new backend in ``llm/__init__.py``
+        actually take effect in the TUI, as DEVELOPMENT.md promises.
+        """
         if self._llm is None:
-            self._llm = OllamaBackend(
-                self.config.ollama.host,
-                timeout=self.config.ollama.request_timeout_seconds,
-                keep_alive=self.config.ollama.keep_alive,
-            )
+            self._llm = build_backend(self.config.ollama)
         return self._llm
+
+    def _invalidate_llm(self) -> None:
+        """Drop the cached backend after a config change.
+
+        The host may have changed, so the cached client points at the wrong
+        place. These callers are synchronous and closing is async, so the old
+        backend is parked for ``aclose`` rather than dropped on the floor,
+        which would leak its HTTP client.
+        """
+        if self._llm is not None:
+            self._retired_llms.append(self._llm)
+        self._llm = None
+        self._llm_health = None
 
     async def refresh_llm_health(self) -> LLMHealth:
         """Re-probe Ollama, starting it first if it is installed but not running.
@@ -112,22 +129,25 @@ class AppServices:
         configure_icons(self.config.ui.ascii_icons)
         if self._manager is not None:
             self._manager.config = self.config
-        # The host may have changed, so drop the cached client.
-        self._llm = None
-        self._llm_health = None
+        self._invalidate_llm()
         return self.config
 
     def save_config(self) -> None:
         config_manager.save(self.config)
         configure_icons(self.config.ui.ascii_icons)
+        # Settings edits ollama.host in place and then saves, so the cached
+        # backend would otherwise keep talking to the previous host.
+        self._invalidate_llm()
 
     async def aclose(self) -> None:
-        if self._llm is not None:
+        backends = [*self._retired_llms, *([self._llm] if self._llm is not None else [])]
+        self._retired_llms.clear()
+        for backend in backends:
             try:
-                await self._llm.close()
+                await backend.close()
             except Exception as exc:  # noqa: BLE001
                 log.debug("error closing LLM client: %s", exc)
-            self._llm = None
+        self._llm = None
         if self._manager is not None:
             self._manager.close()
             self._manager = None

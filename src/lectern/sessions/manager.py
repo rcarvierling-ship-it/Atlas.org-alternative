@@ -141,8 +141,14 @@ class SessionManager:
 
     # -- maintenance -------------------------------------------------------
     def reindex(self) -> int:
-        """Rebuild the index from the session folders. Returns sessions found."""
+        """Rebuild the index from the session folders. Returns sessions found.
+
+        The folders are authoritative, so this also drops rows for sessions
+        that no longer exist on disk. Without that, a folder deleted outside
+        ``delete()`` leaves a ghost row that lists but cannot be opened.
+        """
         found = 0
+        seen: set[str] = set()
         for folder in sorted(self.root.iterdir()) if self.root.exists() else []:
             if not folder.is_dir() or not (folder / "session.json").exists():
                 continue
@@ -164,7 +170,13 @@ class SessionManager:
                 transcript=" ".join(segment.text for segment in segments),
                 notes=final or store.load_live_notes_markdown(),
             )
+            seen.add(meta.id)
             found += 1
+
+        for stale in [meta.id for meta in self._index.list_sessions() if meta.id not in seen]:
+            log.info("dropping index row for missing session %s", stale)
+            self._index.remove(stale)
+
         log.info("reindexed %d sessions", found)
         return found
 

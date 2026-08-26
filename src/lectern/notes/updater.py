@@ -83,9 +83,9 @@ def apply_update_payload(
             for raw in as_dict_list(payload.get(name))
             if str(raw.get("text", "")).strip()
         ]
-        count = state.add_bullets(name, items)
-        added += count
-        changed = changed or count > 0
+        counts = state.add_bullets(name, items)
+        added += counts.added
+        changed = changed or counts.changed
 
     for name in TERM_FIELDS:
         entries = [
@@ -98,9 +98,9 @@ def apply_update_payload(
             for raw in as_dict_list(payload.get(name))
             if str(raw.get("term", "")).strip()
         ]
-        count = state.add_terms(name, entries)
-        added += count
-        changed = changed or count > 0
+        counts = state.add_terms(name, entries)
+        added += counts.added
+        changed = changed or counts.changed
 
     if changed:
         state.revision += 1

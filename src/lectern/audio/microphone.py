@@ -56,8 +56,8 @@ class MicrophoneSource(AudioSource):
     async def start(self) -> None:
         if self._missing_device:
             raise AudioError(
-                f"the selected microphone is not available. "
-                f"Choose another input device in Settings."
+                "the selected microphone is not available. "
+                "Choose another input device in Settings."
             )
         try:
             sd = _import_sounddevice()

@@ -8,7 +8,6 @@ could never have started on a real machine.
 
 from __future__ import annotations
 
-import wave
 
 import numpy as np
 import pytest
@@ -114,7 +113,14 @@ async def test_sessions_screen_renders(manager):
         await pilot.press("s")
         await pilot.pause()
         assert isinstance(app.screen, SessionsScreen)
-        assert not hasattr(type(app.screen), "_render") or callable(app.screen._render)
+        # The regression is a _render defined *on the screen itself*, shadowing
+        # Widget._render. Checking hasattr/callable would pass either way,
+        # because the inherited Widget._render always exists and is callable.
+        for klass in type(app.screen).__mro__:
+            if klass.__module__.startswith("lectern."):
+                assert "_render" not in vars(klass), (
+                    f"{klass.__name__} defines _render, which shadows Widget._render"
+                )
         rows = app.screen.query(SessionRow)
         assert rows and rows.first().meta.id == meta.id
 
@@ -310,5 +316,209 @@ async def test_close_stream_delivers_the_sentinel_on_a_full_queue():
 
     source._close_stream()
 
-    received = [block async for block in source.frames()]
-    assert isinstance(received, list)  # frames() terminated rather than hanging
+    async def drain() -> list[np.ndarray]:
+        return [block async for block in source.frames()]
+
+    # A dropped sentinel makes frames() wait forever, which would hang the
+    # suite rather than fail it — so bound the wait and assert what survived.
+    received = await asyncio.wait_for(drain(), timeout=5.0)
+    assert len(received) == 2, "the sentinel should evict exactly one buffered block"
+
+
+# --- third review round ----------------------------------------------------
+#
+# Each test below fails against the code as it was before the fix it names.
+
+
+def test_malformed_ollama_host_reports_unavailable_instead_of_raising():
+    """httpx.InvalidURL is not an HTTPError, so it escaped the health guard.
+
+    AppServices.refresh_llm_health calls health() during startup; an
+    unhandled exception there took the whole app down instead of degrading
+    to "notes paused".
+    """
+    import asyncio
+
+    from lectern.llm.ollama import OllamaBackend
+
+    # An unterminated IPv6 bracket — a plausible typo for someone pointing
+    # ollama.host at ::1 — is one of the few inputs httpx refuses outright
+    # rather than percent-encoding.
+    backend = OllamaBackend("http://[::1")
+    health = asyncio.run(backend.health())
+    assert health.available is False
+
+
+def test_null_models_list_does_not_raise_type_error():
+    """`{"models": null}` reached the for-loop as None via .get(key, default)."""
+    import asyncio
+
+    import httpx
+
+    from lectern.llm.base import LLMError
+    from lectern.llm.ollama import OllamaBackend
+
+    async def run(payload: object) -> list:
+        backend = OllamaBackend("http://127.0.0.1:1")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=payload)
+
+        backend._client = httpx.AsyncClient(
+            base_url="http://127.0.0.1:1", transport=httpx.MockTransport(handler)
+        )
+        try:
+            return await backend.list_models()
+        finally:
+            await backend.close()
+
+    assert asyncio.run(run({"models": None})) == []
+    assert asyncio.run(run({})) == []
+
+    # A non-list is a protocol error, not an empty list.
+    with pytest.raises(LLMError):
+        asyncio.run(run({"models": {"name": "qwen3:8b"}}))
+
+
+def test_non_integer_model_size_does_not_break_rendering():
+    """size_bytes feeds arithmetic in size_label, so a string failed at render."""
+    import asyncio
+
+    import httpx
+
+    from lectern.llm.ollama import OllamaBackend
+
+    async def run() -> list:
+        backend = OllamaBackend("http://127.0.0.1:1")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"models": [{"name": "m", "size": "4.7GB"}]})
+
+        backend._client = httpx.AsyncClient(
+            base_url="http://127.0.0.1:1", transport=httpx.MockTransport(handler)
+        )
+        try:
+            return await backend.list_models()
+        finally:
+            await backend.close()
+
+    models = asyncio.run(run())
+    assert models[0].size_bytes is None
+    assert models[0].size_label == "—"
+
+
+def test_starring_an_existing_bullet_bumps_the_revision():
+    """A starred upgrade adds no item, so `changed` stayed false and the
+    notes pane skipped the render that would have shown the star."""
+    from lectern.notes.models import NoteItem
+    from lectern.notes.updater import apply_update_payload
+
+    state = NoteState()
+    state.add_bullets("key_points", [NoteItem(text="Membranes are bilayers")])
+    before = state.revision
+
+    result = apply_update_payload(
+        state,
+        {"key_points": [{"text": "Membranes are bilayers", "starred": True}]},
+        timestamp=10.0,
+    )
+
+    assert result.state.key_points[0].starred is True
+    assert result.changed is True
+    assert result.state.revision == before + 1
+
+
+def test_filling_in_a_missing_definition_bumps_the_revision():
+    from lectern.notes.models import TermEntry
+    from lectern.notes.updater import apply_update_payload
+
+    state = NoteState()
+    state.add_terms("definitions", [TermEntry(term="Enzyme", definition="")])
+    before = state.revision
+
+    result = apply_update_payload(
+        state,
+        {"definitions": [{"term": "Enzyme", "definition": "A biological catalyst."}]},
+        timestamp=10.0,
+    )
+
+    assert result.state.definitions[0].definition == "A biological catalyst."
+    assert result.changed is True
+    assert result.state.revision == before + 1
+
+
+def test_repeating_an_identical_item_does_not_bump_the_revision():
+    """The counters must not treat a pure duplicate as a change."""
+    from lectern.notes.models import NoteItem
+    from lectern.notes.updater import apply_update_payload
+
+    state = NoteState()
+    state.add_bullets("key_points", [NoteItem(text="Membranes are bilayers", starred=True)])
+    before = state.revision
+
+    result = apply_update_payload(
+        state,
+        {"key_points": [{"text": "Membranes are bilayers", "starred": True}]},
+        timestamp=10.0,
+    )
+
+    assert result.changed is False
+    assert result.state.revision == before
+
+
+def test_saving_settings_rebuilds_the_llm_backend_for_the_new_host():
+    """Settings edits ollama.host in place and calls save_config; the cached
+    backend kept talking to the old host."""
+    from lectern.services import AppServices
+
+    config = LecternConfig()
+    config.ollama.host = "http://127.0.0.1:11434"
+    services = AppServices(config=config)
+
+    first = services.llm
+    assert first.host.startswith("http://127.0.0.1:11434")
+
+    services.config.ollama.host = "http://127.0.0.1:99"
+    services.save_config()
+
+    second = services.llm
+    assert second is not first
+    assert second.host.startswith("http://127.0.0.1:99")
+    # The replaced backend is kept for closing, not dropped on the floor.
+    assert first in services._retired_llms
+
+
+def test_reindex_drops_rows_for_folders_that_no_longer_exist():
+    """A folder removed outside delete() left a row that lists but won't open."""
+    import shutil
+
+    from lectern.sessions.manager import SessionManager
+
+    config = LecternConfig()
+    manager = SessionManager(config)
+    try:
+        meta, store = manager.create(title="Deleted Later", course="BIO 113")
+        store.close()
+        assert manager.reindex() == 1
+        assert any(row.id == meta.id for row in manager.all_sessions())
+
+        shutil.rmtree(meta.folder)
+
+        assert manager.reindex() == 0
+        assert not any(row.id == meta.id for row in manager.all_sessions())
+    finally:
+        manager.close()
+
+
+def test_mix_keeps_each_gain_with_its_own_track():
+    """Filtering empty tracks while leaving gains in place shifted every
+    later gain onto the wrong track."""
+    from lectern.utils.audio_utils import mix
+
+    empty = np.zeros(0, dtype=np.float32)
+    loud = np.ones(4, dtype=np.float32)
+
+    # The first track is dropped; the surviving track must keep *its* gain
+    # (0.5), not inherit the dropped track's (0.0).
+    mixed = mix(empty, loud, gains=(0.0, 0.5))
+    assert mixed == pytest.approx(np.full(4, 0.5, dtype=np.float32))

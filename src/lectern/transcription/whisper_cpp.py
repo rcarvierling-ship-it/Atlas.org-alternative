@@ -194,8 +194,11 @@ class WhisperCppBackend(TranscriptionBackend):
         """Retain combined stdout/stderr so startup failures are diagnosable."""
         if self._process is None or self._process.stdout is None:
             return
+        # stop() clears self._process before cancelling this task, so hold the
+        # stream locally rather than re-reading the attribute each pass.
+        stream = self._process.stdout
         while True:
-            line = await self._process.stdout.readline()
+            line = await stream.readline()
             if not line:
                 return
             text = line.decode("utf-8", "replace").rstrip()

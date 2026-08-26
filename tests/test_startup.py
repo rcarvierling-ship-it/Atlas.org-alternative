@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from lectern.config.models import LecternConfig
+from lectern.llm.base import LLMHealth
 from lectern.llm.ollama import ensure_ollama_running, is_local_host
 from lectern.services import AppServices
 
@@ -42,8 +43,16 @@ async def test_remote_host_is_never_started(monkeypatch):
         called = True
         return "/usr/local/bin/ollama"
 
+    # ensure_ollama_running probes health before the is_local_host gate, so a
+    # resolvable hostname would make this test do real DNS and HTTP. Use a
+    # TEST-NET-1 literal (RFC 5737, never routable) and stub the probe, so the
+    # test exercises the gate and nothing else.
+    async def unavailable(self):  # noqa: ANN001, ARG001
+        return LLMHealth(available=False, detail="stubbed")
+
+    monkeypatch.setattr("lectern.llm.ollama.OllamaBackend.health", unavailable)
     monkeypatch.setattr("shutil.which", fake_which)
-    assert await ensure_ollama_running("http://studio.local:11434", timeout=1.0) is False
+    assert await ensure_ollama_running("http://192.0.2.1:11434", timeout=1.0) is False
     assert not called, "a remote host should not even look for a local binary"
 
 

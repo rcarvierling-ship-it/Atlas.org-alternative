@@ -71,10 +71,11 @@ def list_input_devices() -> list[AudioDevice]:
 
 
 def default_input_device() -> AudioDevice | None:
-    for device in list_input_devices():
+    """The device PortAudio calls default, else the first one it lists."""
+    devices = list_input_devices()
+    for device in devices:
         if device.is_default:
             return device
-    devices = list_input_devices()
     return devices[0] if devices else None
 
 

@@ -34,15 +34,42 @@ echo
 # --- 1. uv ------------------------------------------------------------------
 if ! command -v uv >/dev/null 2>&1; then
   warn "uv is not installed (Lectern uses it to manage its Python environment)."
-  echo "   Install command: curl -LsSf https://astral.sh/uv/install.sh | sh"
-  if confirm "Run it now?"; then
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    # uv installs to ~/.local/bin; make it visible to the rest of this script.
-    export PATH="$HOME/.local/bin:$PATH"
+
+  # Homebrew first: it verifies what it downloads, which piping a script
+  # straight into a shell cannot do.
+  if command -v brew >/dev/null 2>&1; then
+    echo "   Install command: brew install uv"
+    if confirm "Run it now?"; then
+      brew install uv
+    else
+      bad "uv is required. Install it and re-run this script."
+      exit 1
+    fi
   else
-    bad "uv is required. Install it and re-run this script."
-    exit 1
+    # No Homebrew. Fall back to Astral's installer, but download it to a file
+    # first so it can be read before it runs — never curl | sh, which executes
+    # whatever the network returned, unseen.
+    installer="$(mktemp -t lectern-uv-install)"
+    trap 'rm -f "$installer"' EXIT
+    echo "   Downloading https://astral.sh/uv/install.sh"
+    if ! curl -fLsS https://astral.sh/uv/install.sh -o "$installer"; then
+      bad "Could not download the uv installer. Install uv yourself: https://docs.astral.sh/uv/"
+      exit 1
+    fi
+    printf '   Saved to %s (%s lines)\n' "$installer" "$(wc -l < "$installer" | tr -d ' ')"
+    if confirm "Show it before running?"; then
+      "${PAGER:-less}" "$installer" || cat "$installer"
+    fi
+    if confirm "Run this downloaded installer?"; then
+      sh "$installer"
+    else
+      bad "uv is required. Install it and re-run this script."
+      exit 1
+    fi
   fi
+
+  # uv installs to ~/.local/bin; make it visible to the rest of this script.
+  export PATH="$HOME/.local/bin:$PATH"
 fi
 ok "uv $(uv --version 2>/dev/null | awk '{print $2}')"
 

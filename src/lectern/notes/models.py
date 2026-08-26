@@ -18,10 +18,26 @@ That split is deliberate:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 from lectern.utils.text import normalize_for_compare, word_count
 from lectern.utils.timefmt import format_clock
+
+class MergeCounts(NamedTuple):
+    """What a merge actually did: new items, and upgrades to existing ones.
+
+    An upgrade (a bullet gaining a star, a term gaining a definition) adds
+    nothing but is still a change the UI has to re-render, so the two are
+    reported separately rather than summed.
+    """
+
+    added: int
+    upgraded: int
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.added or self.upgraded)
+
 
 #: Categories that hold free-text bullets. Kept as data so merging, rendering
 #: and prompt-building never drift out of sync with each other.
@@ -173,16 +189,18 @@ class NoteState:
         return word_count(self.to_markdown(include_timeline=False))
 
     # -- mutation ----------------------------------------------------------
-    def add_bullets(self, field_name: str, items: list[NoteItem]) -> int:
+    def add_bullets(self, field_name: str, items: list[NoteItem]) -> MergeCounts:
         """Merge bullets into a category, skipping near-duplicates.
 
-        Returns how many were genuinely new. An incoming duplicate can still
-        *upgrade* an existing bullet to starred — that is how a later "this is
-        on the exam" remark attaches to a point made earlier.
+        Reports new items and upgrades separately. An incoming duplicate can
+        still *upgrade* an existing bullet to starred — that is how a later
+        "this is on the exam" remark attaches to a point made earlier — and the
+        caller has to treat that as a change, or the star never reaches the UI.
         """
         target: list[NoteItem] = getattr(self, field_name)
         existing = {item.key: item for item in target}
         added = 0
+        upgraded = 0
         for item in items:
             text = item.text.strip()
             if not text:
@@ -194,17 +212,23 @@ class NoteState:
             if match is not None:
                 if item.starred and not match.starred:
                     match.starred = True
+                    upgraded += 1
                 continue
             target.append(item)
             existing[key] = item
             added += 1
-        return added
+        return MergeCounts(added, upgraded)
 
-    def add_terms(self, field_name: str, entries: list[TermEntry]) -> int:
-        """Merge term/definition pairs, filling in a gloss that was missing."""
+    def add_terms(self, field_name: str, entries: list[TermEntry]) -> MergeCounts:
+        """Merge term/definition pairs, filling in a gloss that was missing.
+
+        Like ``add_bullets``, upgrades are counted separately: gaining a
+        definition or a star is a real change even though nothing was added.
+        """
         target: list[TermEntry] = getattr(self, field_name)
         existing = {entry.key: entry for entry in target}
         added = 0
+        upgraded = 0
         for entry in entries:
             term = entry.term.strip()
             if not term:
@@ -212,15 +236,19 @@ class NoteState:
             key = normalize_for_compare(term)
             match = existing.get(key)
             if match is not None:
+                mutated = False
                 if entry.definition and len(entry.definition) > len(match.definition):
                     match.definition = entry.definition
-                if entry.starred:
+                    mutated = True
+                if entry.starred and not match.starred:
                     match.starred = True
+                    mutated = True
+                upgraded += int(mutated)
                 continue
             target.append(entry)
             existing[key] = entry
             added += 1
-        return added
+        return MergeCounts(added, upgraded)
 
     def add_topic(self, topic: str, *, timestamp: float = 0.0) -> bool:
         """Record a topic and, if it is new, drop a timeline entry for it."""

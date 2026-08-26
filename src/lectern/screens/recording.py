@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 
-from textual import on, work
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen

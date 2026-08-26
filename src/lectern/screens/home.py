@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich.text import Text
 from textual import on, work
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Label, ListItem, ListView, Static
 

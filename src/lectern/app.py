@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from textual.app import App, ComposeResult, SystemCommand
+from textual.app import App, SystemCommand
 from textual.binding import Binding
 from textual.screen import Screen
 

@@ -48,7 +48,7 @@ Ollama, persistence — with the file standing in for a microphone.
 ## Tests
 
 ```bash
-uv run pytest                          # everything (~1 minute)
+uv run pytest                          # everything (~2 minutes)
 uv run pytest tests/test_notes.py      # one file
 uv run pytest -k acceptance            # the end-to-end workflow
 uv run pytest -q --timeout 120         # if you install pytest-timeout

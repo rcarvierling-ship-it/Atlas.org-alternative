@@ -583,7 +583,10 @@ class RecordingPipeline:
 
         if result.error:
             if not self._notes_available:
+                # A parse error still proves Ollama answered, so notes are
+                # available again — but the outage reason must go with it.
                 self._notes_available = True
+                self._notes_detail = ""
             self._scheduler.finish_update(success=False)
             self._emit_status()
             return
