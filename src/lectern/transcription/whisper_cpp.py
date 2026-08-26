@@ -20,6 +20,7 @@ import asyncio
 import contextlib
 import socket
 import time
+from collections import deque
 from pathlib import Path
 
 import httpx
@@ -56,6 +57,39 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def build_server_command(
+    binary: Path,
+    model_path: Path,
+    *,
+    port: int,
+    language: str = "en",
+    threads: int = 0,
+) -> list[str]:
+    """Build the whisper-server command for the installed CLI contract.
+
+    Boolean flags in whisper.cpp are switches, not key/value options. In
+    particular, ``--print-progress`` must never be followed by ``false``;
+    progress is already disabled by default, so Lectern simply omits it.
+    """
+    command = [
+        str(binary),
+        "--model",
+        str(model_path),
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
+        "--language",
+        language or "en",
+        # Each utterance is decoded independently: carrying decoder state
+        # across chunks is whisper.cpp's main source of runaway repetition.
+        "--no-context",
+    ]
+    if threads > 0:
+        command += ["--threads", str(threads)]
+    return command
+
+
 class WhisperCppBackend(TranscriptionBackend):
     """Persistent whisper.cpp server driving utterance-level transcription."""
 
@@ -86,6 +120,8 @@ class WhisperCppBackend(TranscriptionBackend):
         self._last_latency_ms: float | None = None
         self._model_path: Path | None = None
         self._stderr_task: asyncio.Task[None] | None = None
+        self._stderr_lines: deque[str] = deque(maxlen=50)
+        self._last_command: list[str] = []
         # whisper.cpp's server handles one decode at a time; serialise so a
         # partial decode never races an utterance decode.
         self._lock = asyncio.Lock()
@@ -119,19 +155,15 @@ class WhisperCppBackend(TranscriptionBackend):
 
         port = _free_port()
         self._url = f"http://127.0.0.1:{port}"
-        command = [
-            str(binary),
-            "--model", str(self._model_path),
-            "--host", "127.0.0.1",
-            "--port", str(port),
-            "--language", self.language or "en",
-            # Each utterance is decoded independently: carrying decoder state
-            # across chunks is whisper.cpp's main source of runaway repetition.
-            "--no-context",
-            "--print-progress", "false",
-        ]
-        if self.threads > 0:
-            command += ["--threads", str(self.threads)]
+        command = build_server_command(
+            binary,
+            self._model_path,
+            port=port,
+            language=self.language,
+            threads=self.threads,
+        )
+        self._last_command = command.copy()
+        self._stderr_lines.clear()
 
         log.info("starting whisper server: %s", " ".join(command))
         try:
@@ -148,26 +180,41 @@ class WhisperCppBackend(TranscriptionBackend):
 
         if not await self._wait_until_ready():
             code = self._process.returncode if self._process else None
+            # If the process already exited, give the stderr reader a brief
+            # chance to consume the final usage/error lines before reporting.
+            if code is not None and self._stderr_task is not None:
+                with contextlib.suppress(asyncio.TimeoutError, Exception):
+                    await asyncio.wait_for(asyncio.shield(self._stderr_task), timeout=0.5)
+
+            stderr_tail = "\n".join(self._stderr_lines).strip()
+            command_text = " ".join(self._last_command)
             await self.stop()
-            raise TranscriptionError(
-                "whisper-server did not become ready"
-                + (f" (exited with code {code})" if code is not None else " within the timeout")
-                + ". See 'lectern logs' for the server output."
-            )
+
+            message = "whisper-server did not become ready"
+            if code is not None:
+                message += f" (exited with code {code})"
+            else:
+                message += " within the timeout"
+            if stderr_tail:
+                message += f".\n\nLast whisper-server output:\n{stderr_tail}"
+            message += f"\n\nCommand:\n{command_text}"
+            raise TranscriptionError(message)
 
         self._ready = True
         self._detail = f"{self.model} on {self._url}"
         log.info("whisper server ready (model=%s)", self.model)
 
     async def _drain_stderr(self) -> None:
-        """Forward whisper.cpp's chatter to the log file, never to the TUI."""
+        """Retain and log whisper.cpp stderr without polluting the TUI."""
         if self._process is None or self._process.stderr is None:
             return
         while True:
             line = await self._process.stderr.readline()
             if not line:
                 return
-            log.debug("whisper-server: %s", line.decode("utf-8", "replace").rstrip())
+            text = line.decode("utf-8", "replace").rstrip()
+            self._stderr_lines.append(text)
+            log.debug("whisper-server: %s", text)
 
     async def _wait_until_ready(self) -> bool:
         """Poll until the server answers, or its process dies."""
@@ -218,7 +265,7 @@ class WhisperCppBackend(TranscriptionBackend):
 
     # -- inference ---------------------------------------------------------
     async def transcribe(self, audio: np.ndarray, *, sample_rate: int = TARGET_SAMPLE_RATE) -> str:
-        """Transcribe a single utterance. Returns ``""`` for non-speech."""
+        """Transcribe a single utterance. Returns ``\"\"`` for non-speech."""
         if self._client is None or not self._ready:
             raise TranscriptionError("whisper backend is not running")
         audio = np.asarray(audio, dtype=np.float32)
@@ -279,7 +326,7 @@ class WhisperCppBackend(TranscriptionBackend):
 def parse_whisper_response(body: str) -> str:
     """Extract transcript text from a whisper.cpp server response.
 
-    Handles the shapes different whisper.cpp builds return: ``{"text": ...}``,
+    Handles the shapes different whisper.cpp builds return: ``{\"text\": ...}``,
     verbose JSON with a ``segments`` array, and plain text.
     """
     import json
