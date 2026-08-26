@@ -5,7 +5,7 @@ from pathlib import Path
 from lectern.transcription.whisper_cpp import build_server_command
 
 
-def test_build_server_command_omits_print_progress_false():
+def test_build_server_command_uses_only_stable_startup_flags():
     command = build_server_command(
         Path("/opt/homebrew/bin/whisper-server"),
         Path("/tmp/ggml-small.en.bin"),
@@ -15,6 +15,8 @@ def test_build_server_command_omits_print_progress_false():
 
     assert "--print-progress" not in command
     assert "false" not in command
+    assert "--language" not in command
+    assert "--no-context" not in command
     assert command == [
         "/opt/homebrew/bin/whisper-server",
         "--model",
@@ -23,9 +25,6 @@ def test_build_server_command_omits_print_progress_false():
         "127.0.0.1",
         "--port",
         "61804",
-        "--language",
-        "en",
-        "--no-context",
     ]
 
 
