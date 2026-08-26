@@ -18,6 +18,11 @@ from textual.widgets import Button, Input, Label, Static
 from lectern.theme import ICONS
 
 
+def _literal(value: str) -> Text:
+    """Render arbitrary runtime text without interpreting Rich markup tags."""
+    return Text(value)
+
+
 class ConfirmModal(ModalScreen[bool]):
     """Yes/no confirmation. Escape always means no."""
 
@@ -42,8 +47,8 @@ class ConfirmModal(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
         classes = "modal -danger" if self._danger else "modal"
         with Vertical(classes=classes):
-            yield Label(self._title, classes="modal-title")
-            yield Static(self._message, classes="modal-body")
+            yield Label(_literal(self._title), classes="modal-title")
+            yield Static(_literal(self._message), classes="modal-body")
             with Horizontal(classes="modal-buttons"):
                 yield Button(self._cancel_label, id="cancel")
                 yield Button(self._confirm_label, id="confirm", classes="-primary")
@@ -84,10 +89,10 @@ class TextPromptModal(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="modal"):
-            yield Label(self._title, classes="modal-title")
+            yield Label(_literal(self._title), classes="modal-title")
             yield Input(value=self._initial, placeholder=self._placeholder, id="prompt-input")
             if self._hint:
-                yield Static(self._hint, classes="hint")
+                yield Static(_literal(self._hint), classes="hint")
             with Horizontal(classes="modal-buttons"):
                 yield Button("Cancel", id="cancel")
                 yield Button("Save", id="save", classes="-primary")
@@ -130,8 +135,8 @@ class MessageModal(ModalScreen[None]):
         elif self._severity == "warning":
             classes += " -warning"
         with Vertical(classes=classes):
-            yield Label(self._title, classes="modal-title")
-            yield Static(self._message, classes="modal-body")
+            yield Label(_literal(self._title), classes="modal-title")
+            yield Static(_literal(self._message), classes="modal-body")
             with Horizontal(classes="modal-buttons"):
                 yield Button("Close", id="close", classes="-primary")
 
@@ -147,7 +152,7 @@ class PermissionModal(ModalScreen[None]):
     """Explains exactly which macOS permission is missing and how to grant it.
 
     macOS only applies a newly granted permission to processes launched
-    afterwards, which is the step users most often miss — so the dialog says so
+afterwards, which is the step users most often miss — so the dialog says so
     explicitly rather than leaving them to rediscover it.
     """
 
@@ -161,9 +166,9 @@ class PermissionModal(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="modal -warning"):
-            yield Label(f"{self._permission} permission needed", classes="modal-title")
-            yield Static(self._message, classes="modal-body")
-            yield Static(self._remediation, id="permission-steps")
+            yield Label(_literal(f"{self._permission} permission needed"), classes="modal-title")
+            yield Static(_literal(self._message), classes="modal-body")
+            yield Static(_literal(self._remediation), id="permission-steps")
             yield Static(
                 "macOS only applies a new permission to apps started afterwards, "
                 "so quit and reopen your terminal once you've granted it.",
@@ -272,7 +277,7 @@ class FinalizingModal(ModalScreen[None]):
         try:
             self.query_one(f"#step-{index}", Static).update(self._step_text(step))
             if detail:
-                self.query_one("#finalize-detail", Static).update(detail)
+                self.query_one("#finalize-detail", Static).update(_literal(detail))
         except Exception:  # noqa: BLE001 - modal already dismissed
             pass
 
