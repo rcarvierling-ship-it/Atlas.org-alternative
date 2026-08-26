@@ -266,15 +266,43 @@ speaker emphasised with a leading "★". Do not add information that is not in
 this text. Do not write an introduction or conclusion — just the notes."""
 
 
-def build_reduce_prompt(*, summaries: str, session_title: str, course: str = "", duration: str = "") -> str:
-    """Prompt that merges per-chunk notes into one final study guide."""
+def build_reduce_prompt(
+    *,
+    summaries: str,
+    session_title: str,
+    course: str = "",
+    duration: str = "",
+    note_digest: str = "",
+    markers: str = "",
+) -> str:
+    """Prompt that merges per-chunk notes into one final study guide.
+
+    The chunk summaries are derived from the transcript only, so the notes
+    taken during the lecture are supplied alongside them: a note the student
+    typed was never spoken, and would otherwise not exist anywhere in this
+    prompt.
+    """
     meta = f"LECTURE: {session_title}"
     if course:
         meta += f"\nCOURSE: {course}"
     if duration:
         meta += f"\nDURATION: {duration}"
+
+    extra = ""
+    if note_digest:
+        extra += (
+            "\n\nNOTES TAKEN DURING THE LECTURE (including notes the student typed "
+            "themselves — these may not appear in the transcript, and must not be "
+            f"dropped):\n{note_digest}"
+        )
+    if markers:
+        extra += (
+            "\n\nMOMENTS THE STUDENT FLAGGED AS IMPORTANT — make sure the related "
+            f"material appears and is marked as significant:\n{markers}"
+        )
+
     return f"""\
-{meta}
+{meta}{extra}
 
 These are sequential notes covering the whole lecture, part by part:
 

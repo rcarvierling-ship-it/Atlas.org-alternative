@@ -59,6 +59,10 @@ class NoteScheduler:
     clock: Callable[[], float] = time.monotonic
     _pending: list[TranscriptSegment] = field(default_factory=list, init=False)
     _markers: list[str] = field(default_factory=list, init=False)
+    #: The batch handed to the update currently running. Held so a failed
+    #: update can put it back rather than losing the speech entirely.
+    _inflight: list[TranscriptSegment] = field(default_factory=list, init=False)
+    _inflight_markers: list[str] = field(default_factory=list, init=False)
     _last_update: float = field(default=0.0, init=False)
     _last_consolidate: float = field(default=0.0, init=False)
     _last_segment_end: float = field(default=0.0, init=False)
@@ -146,7 +150,10 @@ class NoteScheduler:
             used += words
 
         self._pending = self._pending[len(taken) :]
-        self._markers, markers = [], "\n".join(self._markers)
+        taken_markers, self._markers = self._markers, []
+        markers = "\n".join(taken_markers)
+        self._inflight = taken
+        self._inflight_markers = taken_markers
         self._running = True
         self._forced = False
 
@@ -158,15 +165,25 @@ class NoteScheduler:
         )
 
     def finish_update(self, *, success: bool = True, now: float | None = None) -> None:
-        """Release the busy flag after an update completes (or fails)."""
+        """Release the busy flag after an update completes (or fails).
+
+        A failed update returns its batch to the front of the queue. Without
+        that, an Ollama outage would consume a batch per cycle and erase that
+        speech from the notes permanently — the retry would only ever see
+        newly arriving words.
+        """
         self._running = False
         now = now if now is not None else self.clock()
         if success:
             self._last_update = now
         else:
+            self._pending = self._inflight + self._pending
+            self._markers = self._inflight_markers + self._markers
             # Back off a little on failure rather than hammering a sick backend,
             # but stay well under the normal interval so recovery is quick.
             self._last_update = now - self.config.update_interval_seconds / 2
+        self._inflight = []
+        self._inflight_markers = []
 
     def finish_consolidation(self, now: float | None = None) -> None:
         self._running = False
@@ -182,8 +199,11 @@ class NoteScheduler:
     def drain(self) -> str:
         """Return every buffered word without scheduling anything.
 
-        Used at shutdown so trailing speech still reaches the final synthesis.
+        Includes a batch whose update never completed, so stopping mid-update
+        does not strand it.
         """
-        text = " ".join(segment.text.strip() for segment in self._pending).strip()
+        segments = self._inflight + self._pending
+        text = " ".join(segment.text.strip() for segment in segments).strip()
         self._pending = []
+        self._inflight = []
         return text

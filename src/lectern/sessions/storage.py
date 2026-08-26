@@ -257,48 +257,129 @@ class SessionStore:
         self.close_transcript()
 
 
+#: Byte length of the canonical PCM WAV header the ``wave`` module writes for a
+#: mono 16-bit file. Appending is only safe on a file with exactly this layout.
+CANONICAL_WAV_HEADER_BYTES = 44
+
+
 class AudioRecorder:
     """Streams captured audio to a WAV file while the session runs.
 
     Frames are written as they arrive rather than buffered in memory, so a
     three-hour lecture costs a constant handful of kilobytes of RAM and the
     recording survives a crash up to the last flush.
+
+    Reopening an existing recording **appends** to it. That matters for resumed
+    sessions: opening the same path for writing would truncate everything
+    captured before the interruption, destroying the recording the user came
+    back for. Appending is done by writing raw frames past the end and patching
+    the two size fields on close, which is safe precisely because the file was
+    written by this class and therefore has the canonical 44-byte header.
     """
 
     def __init__(self, path: Path, sample_rate: int = TARGET_SAMPLE_RATE) -> None:
         self.path = path
         self.sample_rate = sample_rate
         self._handle = None
+        self._raw = None
+        self._existing_frames = 0
         self._frames_written = 0
 
     def open(self) -> None:
         import wave
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self._open_for_append():
+            return
         self._handle = wave.open(str(self.path), "wb")
         self._handle.setnchannels(1)
         self._handle.setsampwidth(2)
         self._handle.setframerate(self.sample_rate)
 
+    def _open_for_append(self) -> bool:
+        """Continue an existing recording, if one is safely appendable."""
+        import wave
+
+        if not self.path.exists():
+            return False
+        size = self.path.stat().st_size
+        if size <= CANONICAL_WAV_HEADER_BYTES:
+            return False
+
+        try:
+            with wave.open(str(self.path), "rb") as existing:
+                compatible = (
+                    existing.getnchannels() == 1
+                    and existing.getsampwidth() == 2
+                    and existing.getframerate() == self.sample_rate
+                )
+                frames = existing.getnframes()
+        except (wave.Error, OSError) as exc:
+            log.warning("existing recording is unreadable (%s); starting a new file", exc)
+            return False
+
+        if not compatible:
+            log.warning("existing recording has a different format; starting a new file")
+            return False
+        if CANONICAL_WAV_HEADER_BYTES + frames * 2 != size:
+            # Extra chunks or a torn tail: patching the sizes would corrupt it.
+            log.warning("existing recording has an unexpected layout; starting a new file")
+            return False
+
+        try:
+            self._raw = self.path.open("r+b")
+            self._raw.seek(0, os.SEEK_END)
+        except OSError as exc:
+            log.warning("could not reopen the recording for append (%s)", exc)
+            self._raw = None
+            return False
+
+        self._existing_frames = frames
+        log.info("appending to existing recording (%.1fs already captured)", frames / self.sample_rate)
+        return True
+
     def write(self, block) -> None:  # noqa: ANN001 - numpy array
         from lectern.utils.audio_utils import float_to_pcm16
 
-        if self._handle is None:
+        payload = float_to_pcm16(block)
+        if self._raw is not None:
+            self._raw.write(payload)
+        elif self._handle is not None:
+            self._handle.writeframes(payload)
+        else:
             return
-        self._handle.writeframes(float_to_pcm16(block))
         self._frames_written += len(block)
 
     @property
     def seconds_written(self) -> float:
-        return self._frames_written / self.sample_rate
+        return (self._existing_frames + self._frames_written) / self.sample_rate
 
     def close(self) -> None:
         handle, self._handle = self._handle, None
+        raw, self._raw = self._raw, None
+
         if handle is not None:
             try:
                 handle.close()
             except Exception as exc:  # noqa: BLE001 pragma: no cover
                 log.warning("error closing audio recorder: %s", exc)
+
+        if raw is not None:
+            try:
+                total_frames = self._existing_frames + self._frames_written
+                data_bytes = total_frames * 2
+                raw.flush()
+                # RIFF chunk size, then the data chunk size.
+                raw.seek(4)
+                raw.write((CANONICAL_WAV_HEADER_BYTES - 8 + data_bytes).to_bytes(4, "little"))
+                raw.seek(CANONICAL_WAV_HEADER_BYTES - 4)
+                raw.write(data_bytes.to_bytes(4, "little"))
+                raw.flush()
+                os.fsync(raw.fileno())
+            except OSError as exc:  # pragma: no cover - filesystem dependent
+                log.error("could not finalize the appended recording: %s", exc)
+            finally:
+                raw.close()
 
 
 def session_folder_name(created_at: datetime, title: str) -> str:

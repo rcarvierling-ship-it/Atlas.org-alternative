@@ -145,10 +145,12 @@ class NoteFinalizer:
                 chunks_used = 1
             else:
                 markdown, chunks_used = await self._map_reduce(
+                    state=state,
                     transcript=transcript,
                     session_title=session_title,
                     course=course,
                     duration=duration,
+                    markers=markers,
                     on_progress=on_progress,
                 )
         except LLMError as exc:
@@ -196,10 +198,12 @@ class NoteFinalizer:
     async def _map_reduce(
         self,
         *,
+        state: NoteState,
         transcript: str,
         session_title: str,
         course: str,
         duration: str,
+        markers: str,
         on_progress: ProgressCallback | None,
     ) -> tuple[str, int]:
         chunks = chunk_transcript(transcript, max_words=self.chunk_budget_words)
@@ -259,6 +263,12 @@ class NoteFinalizer:
                 session_title=session_title,
                 course=course,
                 duration=duration,
+                # The chunk summaries come from the transcript alone, so notes
+                # the student typed themselves — which were never spoken — and
+                # the moments they flagged would otherwise be lost from the
+                # study guide of any lecture long enough to be chunked.
+                note_digest=state.context_digest(max_words=800),
+                markers=markers,
             ),
             model=self.model,
             system=FINAL_SYSTEM_PROMPT,

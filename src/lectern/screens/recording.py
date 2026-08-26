@@ -128,6 +128,7 @@ class RecordingScreen(Screen):
 
         initial_notes = NoteState()
         initial_markers: list[Marker] = []
+        initial_segments: list[TranscriptSegment] = []
         start_id, time_offset = 1, 0.0
 
         try:
@@ -139,9 +140,8 @@ class RecordingScreen(Screen):
                 start_id, time_offset = resume_offsets(self.store)
                 initial_notes = self.store.load_note_state()
                 initial_markers = self.store.load_markers()
-                self.query_one("#transcript", TranscriptView).load_segments(
-                    self.store.load_segments()
-                )
+                initial_segments = self.store.load_segments()
+                self.query_one("#transcript", TranscriptView).load_segments(initial_segments)
             else:
                 self.meta, self.store = manager.create(
                     title=self.request.title,
@@ -199,6 +199,7 @@ class RecordingScreen(Screen):
             time_offset=time_offset,
             initial_notes=initial_notes,
             initial_markers=initial_markers,
+            initial_segments=initial_segments,
         )
 
         if not initial_notes.is_empty:
@@ -388,7 +389,6 @@ class RecordingScreen(Screen):
         modal.set_step(FINALIZE_STEPS[0], "active")
 
         pipeline = self.pipeline
-        trailing = pipeline.drain_pending_transcript()
         await pipeline.stop()
 
         segments = pipeline.segments
@@ -409,9 +409,10 @@ class RecordingScreen(Screen):
         final_markdown = ""
         error = ""
 
-        transcript_text = " ".join(
-            [segment.text.strip() for segment in segments] + ([trailing] if trailing else [])
-        ).strip()
+        # Every transcribed word is in `segments`, including anything the
+        # scheduler had buffered for a note update that never ran, so this is
+        # the whole lecture exactly once.
+        transcript_text = " ".join(segment.text.strip() for segment in segments).strip()
 
         if not self.request.notes_model:
             modal.set_step(FINALIZE_STEPS[2], "failed", "no notes model selected")

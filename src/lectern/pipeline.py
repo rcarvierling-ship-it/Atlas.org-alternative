@@ -146,6 +146,7 @@ class RecordingPipeline:
         time_offset: float = 0.0,
         initial_notes: NoteState | None = None,
         initial_markers: list[Marker] | None = None,
+        initial_segments: list[TranscriptSegment] | None = None,
     ) -> None:
         self.config = config
         self.source = source
@@ -159,7 +160,13 @@ class RecordingPipeline:
         self.state = PipelineState.IDLE
         self.notes = initial_notes.copy() if initial_notes else NoteState()
         self.markers: list[Marker] = list(initial_markers or [])
-        self.segments: list[TranscriptSegment] = []
+        # A resumed session starts holding everything captured before the
+        # interruption. Finalization rewrites transcript.md and recomputes the
+        # word and segment counts from this list, so starting it empty would
+        # quietly reduce a recovered lecture to only its resumed half. These
+        # segments are deliberately *not* given to the scheduler: they were
+        # already turned into notes before the interruption.
+        self.segments: list[TranscriptSegment] = list(initial_segments or [])
 
         self._segmenter = VoiceSegmenter(
             config=VADConfig(sample_rate=TARGET_SAMPLE_RATE),
@@ -296,8 +303,7 @@ class RecordingPipeline:
         # Let the trailing utterance through before shutting transcription down.
         trailing = self._segmenter.flush()
         if trailing is not None and trailing.audio.size:
-            with contextlib.suppress(asyncio.QueueFull):
-                self._utterances.put_nowait(trailing)
+            await self._enqueue_blocking(trailing, timeout=10.0)
 
         audio_task = self._task_named("audio")
         if audio_task is not None:
@@ -306,10 +312,15 @@ class RecordingPipeline:
                 await audio_task
 
         # Sentinel tells the transcription task to finish the queue and exit.
-        with contextlib.suppress(asyncio.QueueFull):
-            self._utterances.put_nowait(None)
+        # It must actually land: dropping it on a full queue leaves the worker
+        # blocked on an empty queue once it has drained, so finishing appears
+        # to hang until the timeout below cancels it.
         transcribe_task = self._task_named("transcribe")
+        delivered = await self._enqueue_blocking(None, timeout=120.0)
         if transcribe_task is not None:
+            if not delivered:
+                log.error("could not deliver the transcription sentinel; cancelling the worker")
+                transcribe_task.cancel()
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(transcribe_task, timeout=60.0)
 
@@ -393,6 +404,18 @@ class RecordingPipeline:
                 )
             with contextlib.suppress(asyncio.QueueFull):
                 self._utterances.put_nowait(utterance)
+
+    async def _enqueue_blocking(self, item: object, *, timeout: float) -> bool:
+        """Put an item on the utterance queue, waiting for space if needed.
+
+        Used only on the shutdown path, where the consumer is still draining
+        and dropping the item would strand the worker.
+        """
+        try:
+            await asyncio.wait_for(self._utterances.put(item), timeout=timeout)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            return False
+        return True
 
     async def _maybe_partial(self) -> None:
         """Decode an unstable hypothesis for the utterance being spoken.
@@ -664,10 +687,6 @@ class RecordingPipeline:
             self.store.save_note_state(self.notes, title=self.meta.title)
         except OSError as exc:
             log.error("failed to save notes: %s", exc)
-
-    def drain_pending_transcript(self) -> str:
-        """Buffered speech that never made it into a note update."""
-        return self._scheduler.drain()
 
     # -- callback plumbing -------------------------------------------------
     def _emit_status(self) -> None:
