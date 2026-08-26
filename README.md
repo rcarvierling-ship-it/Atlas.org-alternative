@@ -294,8 +294,14 @@ By default, Lectern:
 The only outbound requests it can make are the ones you explicitly ask for:
 downloading a Whisper model with `lectern models whisper --download`.
 
-If you point `ollama.host` at a machine that is not your own, your transcript
-goes there — Lectern will not stop you, but nothing does that by default.
+Two settings can change that, and only if you change them yourself. Pointing
+`ollama.host` at another machine sends your transcript there; pointing
+`transcription.server_url` at another machine sends your **audio** there. Both
+are legitimate — running Ollama on your own second Mac is still local in the
+sense that matters, and there is no hosted-API path in Lectern to fall back to
+— but neither happens by default, and `lectern doctor` names every non-loopback
+endpoint under its **Local only** check rather than letting you assume
+otherwise.
 
 ---
 
