@@ -1,17 +1,8 @@
 """whisper.cpp transcription backend.
 
 Lectern drives whisper.cpp through its bundled HTTP server (``whisper-server``)
-rather than the one-shot ``whisper-cli`` binary. That choice is the whole
-latency story: the server loads the ggml weights **once**, keeps them resident
-(and Metal-warm on Apple Silicon), and answers each utterance in the time it
-takes to decode a few seconds of audio. Spawning ``whisper-cli`` per chunk
-would re-read and re-upload hundreds of megabytes of weights every few seconds.
-
-The server is a child process owned by this backend: started in ``start()``,
-health-checked before the session is allowed to begin, and torn down in
-``stop()``. Users who already run their own whisper.cpp server can point
-``transcription.server_url`` at it, in which case Lectern attaches instead of
-spawning and never touches the process lifecycle.
+rather than the one-shot ``whisper-cli`` binary. The server loads the model
+once and stays resident for the recording session.
 """
 
 from __future__ import annotations
@@ -65,12 +56,15 @@ def build_server_command(
     language: str = "en",
     threads: int = 0,
 ) -> list[str]:
-    """Build the whisper-server command for the installed CLI contract.
+    """Build a deliberately minimal, cross-version whisper-server command.
 
-    Boolean flags in whisper.cpp are switches, not key/value options. In
-    particular, ``--print-progress`` must never be followed by ``false``;
-    progress is already disabled by default, so Lectern simply omits it.
+    ``language`` and ``no_context`` are sent with each /inference request rather
+    than as process startup flags. Homebrew can lag upstream whisper.cpp, and
+    older server builds exit after printing help when they see a startup flag
+    they do not recognise. Model, host and port are the stable server options we
+    actually need to start the local HTTP service.
     """
+    del language  # configured per inference request, not at process startup
     command = [
         str(binary),
         "--model",
@@ -79,11 +73,6 @@ def build_server_command(
         "127.0.0.1",
         "--port",
         str(port),
-        "--language",
-        language or "en",
-        # Each utterance is decoded independently: carrying decoder state
-        # across chunks is whisper.cpp's main source of runaway repetition.
-        "--no-context",
     ]
     if threads > 0:
         command += ["--threads", str(threads)]
@@ -119,14 +108,11 @@ class WhisperCppBackend(TranscriptionBackend):
         self._detail = "not started"
         self._last_latency_ms: float | None = None
         self._model_path: Path | None = None
-        self._stderr_task: asyncio.Task[None] | None = None
-        self._stderr_lines: deque[str] = deque(maxlen=50)
+        self._output_task: asyncio.Task[None] | None = None
+        self._server_output: deque[str] = deque(maxlen=400)
         self._last_command: list[str] = []
-        # whisper.cpp's server handles one decode at a time; serialise so a
-        # partial decode never races an utterance decode.
         self._lock = asyncio.Lock()
 
-    # -- lifecycle ---------------------------------------------------------
     async def start(self) -> None:
         if self._external_url:
             self._url = self._external_url
@@ -163,30 +149,30 @@ class WhisperCppBackend(TranscriptionBackend):
             threads=self.threads,
         )
         self._last_command = command.copy()
-        self._stderr_lines.clear()
+        self._server_output.clear()
 
         log.info("starting whisper server: %s", " ".join(command))
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *command,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
             )
         except OSError as exc:
             raise TranscriptionError(f"could not launch whisper-server: {exc}") from exc
 
-        self._stderr_task = asyncio.create_task(self._drain_stderr(), name="whisper-stderr")
+        self._output_task = asyncio.create_task(
+            self._drain_output(), name="whisper-server-output"
+        )
         self._client = httpx.AsyncClient(base_url=self._url, timeout=120.0)
 
         if not await self._wait_until_ready():
             code = self._process.returncode if self._process else None
-            # If the process already exited, give the stderr reader a brief
-            # chance to consume the final usage/error lines before reporting.
-            if code is not None and self._stderr_task is not None:
+            if code is not None and self._output_task is not None:
                 with contextlib.suppress(asyncio.TimeoutError, Exception):
-                    await asyncio.wait_for(asyncio.shield(self._stderr_task), timeout=0.5)
+                    await asyncio.wait_for(asyncio.shield(self._output_task), timeout=0.75)
 
-            stderr_tail = "\n".join(self._stderr_lines).strip()
+            output = "\n".join(self._server_output).strip()
             command_text = " ".join(self._last_command)
             await self.stop()
 
@@ -195,8 +181,8 @@ class WhisperCppBackend(TranscriptionBackend):
                 message += f" (exited with code {code})"
             else:
                 message += " within the timeout"
-            if stderr_tail:
-                message += f".\n\nLast whisper-server output:\n{stderr_tail}"
+            if output:
+                message += f".\n\nwhisper-server output:\n{output}"
             message += f"\n\nCommand:\n{command_text}"
             raise TranscriptionError(message)
 
@@ -204,20 +190,19 @@ class WhisperCppBackend(TranscriptionBackend):
         self._detail = f"{self.model} on {self._url}"
         log.info("whisper server ready (model=%s)", self.model)
 
-    async def _drain_stderr(self) -> None:
-        """Retain and log whisper.cpp stderr without polluting the TUI."""
-        if self._process is None or self._process.stderr is None:
+    async def _drain_output(self) -> None:
+        """Retain combined stdout/stderr so startup failures are diagnosable."""
+        if self._process is None or self._process.stdout is None:
             return
         while True:
-            line = await self._process.stderr.readline()
+            line = await self._process.stdout.readline()
             if not line:
                 return
             text = line.decode("utf-8", "replace").rstrip()
-            self._stderr_lines.append(text)
+            self._server_output.append(text)
             log.debug("whisper-server: %s", text)
 
     async def _wait_until_ready(self) -> bool:
-        """Poll until the server answers, or its process dies."""
         deadline = time.monotonic() + self._startup_timeout
         while time.monotonic() < deadline:
             if self._process is not None and self._process.returncode is not None:
@@ -234,8 +219,6 @@ class WhisperCppBackend(TranscriptionBackend):
             response = await self._client.get("/", timeout=2.0)
         except httpx.HTTPError:
             return False
-        # Any HTTP answer means the listener is up; whisper.cpp's index route
-        # returns 200 with its demo page, older builds return 404.
         return response.status_code < 500
 
     async def stop(self) -> None:
@@ -256,16 +239,17 @@ class WhisperCppBackend(TranscriptionBackend):
                 with contextlib.suppress(Exception):
                     await process.wait()
 
-        if self._stderr_task is not None:
-            self._stderr_task.cancel()
+        if self._output_task is not None:
+            self._output_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
-                await self._stderr_task
-            self._stderr_task = None
+                await self._output_task
+            self._output_task = None
         log.info("whisper backend stopped")
 
-    # -- inference ---------------------------------------------------------
-    async def transcribe(self, audio: np.ndarray, *, sample_rate: int = TARGET_SAMPLE_RATE) -> str:
-        """Transcribe a single utterance. Returns ``\"\"`` for non-speech."""
+    async def transcribe(
+        self, audio: np.ndarray, *, sample_rate: int = TARGET_SAMPLE_RATE
+    ) -> str:
+        """Transcribe a single utterance. Returns an empty string for non-speech."""
         if self._client is None or not self._ready:
             raise TranscriptionError("whisper backend is not running")
         audio = np.asarray(audio, dtype=np.float32)
@@ -302,7 +286,6 @@ class WhisperCppBackend(TranscriptionBackend):
 
     @staticmethod
     def _clean(text: str) -> str:
-        """Drop whisper's silence hallucinations before they reach the transcript."""
         text = text.strip()
         if not text or looks_like_hallucination(text):
             if text:
@@ -324,11 +307,7 @@ class WhisperCppBackend(TranscriptionBackend):
 
 
 def parse_whisper_response(body: str) -> str:
-    """Extract transcript text from a whisper.cpp server response.
-
-    Handles the shapes different whisper.cpp builds return: ``{\"text\": ...}``,
-    verbose JSON with a ``segments`` array, and plain text.
-    """
+    """Extract transcript text from common whisper.cpp response shapes."""
     import json
 
     body = body.strip()
