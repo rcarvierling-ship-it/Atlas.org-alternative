@@ -75,7 +75,7 @@ they don't change it. `scripts/install.sh` puts the command on PATH via
 
 ## Testing
 
-`uv run pytest` — ~1 minute, 142 tests, all passing.
+`uv run pytest` — ~2 minutes, 191 tests, all passing.
 
 The pipeline and acceptance tests run the **production code path** with only the
 two model servers faked (`tests/fakes.py` speaks the real protocols). If you
@@ -90,6 +90,17 @@ uv run python scripts/demo.py        # the real TUI against stub servers
 uv run python scripts/screenshots.py # regenerate README screenshots
 ```
 
+## whisper.cpp gotcha that already cost a release-blocker
+
+**`whisper-server` accepts far fewer flags than `whisper-cli`**, and an
+unrecognised one makes it print usage and *exit* — which surfaces only as
+"whisper-server did not become ready". `--no-context` and `--language` are
+whisper-cli flags; `--print-progress` is valueless, so passing it a value
+leaves a stray argument. Keep the startup command minimal (`build_server_command`
+is deliberately a pure function with its own test) and send language and
+`no_context` with each `/inference` request instead. When startup fails, the
+error carries the server's own output and the exact command — keep that.
+
 ## Textual gotchas hit already
 
 - **Never define a method named `_render`** on a widget — it shadows Textual's
@@ -102,6 +113,13 @@ uv run python scripts/screenshots.py # regenerate README screenshots
 - `Static.content` is the public accessor in Textual 8.x (not `.renderable`).
 - `rich.text.Text` has no `pad_bottom`. For hanging indents use
   `Table.grid` with a narrow marker column and a `ratio=1` body column.
+- Interpolating a `Text` into an f-string throws away its spans. Use
+  `Text.append_text` to keep styling.
+- A `Select` raises `InvalidSelectValueError` if assigned a value that is not
+  among its options — always membership-test a persisted choice first.
+- Rich's console markup eats user data: `[section]` headers and bracketed
+  session titles vanish. Wrap anything user-supplied in `Text`, or render with
+  `Syntax`.
 
 ## Verification status
 
@@ -110,7 +128,7 @@ no whisper.cpp on the build machine). What that means:
 
 - **Verified by running:** the whole Python application — TUI, pipeline, VAD,
   scheduler, merge logic, persistence, recovery, search, exports, CLI — against
-  protocol-level fakes and a WAV fixture. 142 tests pass.
+  protocol-level fakes and a WAV fixture. 191 tests pass.
 - **Not executed here:** real whisper.cpp, real Ollama, CoreAudio microphone
   capture, and the Swift ScreenCaptureKit helper (`native/audio-capture/`, never
   compiled — there is no Swift toolchain on this machine).
