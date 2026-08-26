@@ -16,6 +16,7 @@ Two details matter for note quality:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from typing import Any
@@ -165,6 +166,85 @@ class OllamaBackend(LLMBackend):
         if self._client is not None and self._owns_client:
             await self._client.aclose()
         self._client = None
+
+
+def is_local_host(host: str) -> bool:
+    """True when ``host`` points at this machine.
+
+    Auto-starting a daemon only ever makes sense locally: if the user pointed
+    Lectern at another machine, that machine's daemon is not ours to launch.
+    """
+    from urllib.parse import urlparse
+
+    hostname = (urlparse(host).hostname or "").lower()
+    return hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+async def ensure_ollama_running(
+    host: str = "http://localhost:11434", *, timeout: float = 25.0
+) -> bool:
+    """Start a local Ollama daemon if one is not already answering.
+
+    This is what lets ``lectern`` be the only command a user types: whisper.cpp
+    is already spawned per session by the transcription backend, and this does
+    the same for the note model's daemon.
+
+    Returns True if Ollama is running by the time this returns. Never raises —
+    a machine without Ollama installed simply keeps note generation disabled,
+    and the UI explains that.
+    """
+    import shutil
+    import time
+
+    backend = OllamaBackend(host)
+    try:
+        if (await backend.health()).available:
+            return True
+
+        if not is_local_host(host):
+            log.info("not starting Ollama: %s is not a local host", host)
+            return False
+
+        binary = shutil.which("ollama")
+        if binary is None:
+            log.info("not starting Ollama: the 'ollama' binary is not installed")
+            return False
+
+        log.info("starting Ollama via %s", binary)
+        try:
+            process = await asyncio.create_subprocess_exec(
+                binary,
+                "serve",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                stdin=asyncio.subprocess.DEVNULL,
+                # Detach from Lectern's process group so quitting the TUI does
+                # not take the daemon down with it — the user may well have
+                # other things using Ollama.
+                start_new_session=True,
+            )
+        except OSError as exc:
+            log.warning("could not launch Ollama: %s", exc)
+            return False
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if process.returncode is not None:
+                # A daemon that exits immediately usually means one is already
+                # bound to the port; re-probe before giving up.
+                if (await backend.health()).available:
+                    return True
+                log.warning("Ollama exited immediately with code %s", process.returncode)
+                return False
+            await asyncio.sleep(0.4)
+            if (await backend.health()).available:
+                log.info("Ollama is up")
+                return True
+
+        log.warning("Ollama did not become ready within %.0fs", timeout)
+        return False
+    finally:
+        await backend.close()
 
 
 def _parse_stream_line(line: str) -> str | None:

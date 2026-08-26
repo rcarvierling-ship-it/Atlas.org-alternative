@@ -59,27 +59,52 @@ system-audio capture is macOS-only.
 ```bash
 git clone https://github.com/rcarvierling-ship-it/Atlas.org-alternative.git
 cd Atlas.org-alternative
+./scripts/install.sh
+```
 
-# Install Lectern and its microphone support.
-uv sync --extra audio
+That puts a `lectern` command on your PATH and offers to install the local AI
+pieces — whisper.cpp, a Whisper model, Ollama and a model to run — asking before
+each one. Nothing is installed without you saying yes.
 
-# Speech recognition.
-brew install whisper-cpp
-uv run lectern models whisper --download small.en
+After that, from any directory, in any terminal:
 
-# Local model for the notes.
-brew install ollama
-ollama serve &          # or launch the Ollama app
-ollama pull qwen3:8b    # any instruct model works; this is just an example
+```bash
+lectern
+```
 
-# Optional: native macOS system-audio capture (Zoom, browser, video).
+**That's the whole thing.** Lectern starts whisper.cpp and Ollama itself, so
+there is no daemon to launch first and nothing to run in another tab.
+
+<details>
+<summary>Manual install, if you'd rather do it yourself</summary>
+
+```bash
+uv tool install --editable . --with sounddevice   # the `lectern` command
+brew install whisper-cpp                          # speech recognition
+lectern models whisper --download small.en        # a Whisper model
+brew install ollama                               # the local note model
+ollama pull qwen3:8b                              # any instruct model works
+```
+
+If `lectern` isn't found afterwards, add uv's tool directory to your PATH:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"   # add to ~/.zshrc or ~/.bashrc
+```
+
+</details>
+
+Optional, for capturing what your Mac is *playing* (Zoom, a lecture video, a
+browser tab):
+
+```bash
 ./scripts/build-native.sh
 ```
 
 Check everything at once:
 
 ```bash
-uv run lectern doctor
+lectern doctor
 ```
 
 ```
@@ -105,11 +130,16 @@ Everything looks good.
 ## First run
 
 ```bash
-uv run lectern
+lectern
 ```
 
 On first launch Lectern shows a setup screen with the same checks and the exact
 command to fix anything missing. It never installs anything for you.
+
+From then on, `lectern` is all you type. It brings up its own dependencies:
+whisper.cpp is started per session, and if Ollama is installed but not running,
+Lectern starts it in the background (set `ollama.autostart = false` to turn that
+off, and it is never attempted for a non-local `ollama.host`).
 
 Once set up, select your models in **Settings** (<kbd>,</kbd>) — or write them
 into the config file directly — and you are ready to record.
@@ -230,6 +260,7 @@ vad = true
 host = "http://localhost:11434"
 notes_model = "qwen3:8b"
 final_model = "qwen3:8b"
+autostart = true          # start the Ollama daemon if it isn't already running
 
 [notes]
 update_interval_seconds = 15
@@ -277,9 +308,10 @@ and set `transcription.whisper_server_binary` to the binary.
 Existing models in `~/whisper.cpp/models`, `~/.cache/whisper.cpp` and the
 Homebrew share directories are found automatically and never re-downloaded.
 
-**"Ollama is not responding"** — start it (`ollama serve` or the app). Recording
-and transcription continue without it; only note generation pauses, and it
-resumes automatically when Ollama comes back.
+**"Ollama is not responding"** — Lectern tries to start it for you; this means
+it isn't installed, or the daemon failed to come up (see `lectern logs`).
+Recording and transcription continue without it; only note generation pauses,
+and it resumes automatically when Ollama comes back.
 
 **No microphone found** — check the Microphone permission, then restart your
 terminal. `uv sync --extra audio` installs the PortAudio bindings.
@@ -294,6 +326,10 @@ model (`base.en` or `tiny.en`) in Settings.
 and run `lectern reindex`. If Lectern was interrupted mid-lecture, it offers to
 resume, keep, finalize or discard the session on the next launch.
 
+**`lectern: command not found`** — the install directory isn't on your PATH.
+Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` (or `~/.bashrc`) and
+open a new terminal. Re-running `./scripts/install.sh` prints the same fix.
+
 **Something else** — `lectern logs` has the details; nothing is ever printed over
 the TUI.
 
@@ -306,6 +342,7 @@ runs the whole app without whisper.cpp or Ollama installed, and
 [ARCHITECTURE.md](ARCHITECTURE.md) for how the pipeline fits together.
 
 ```bash
+uv sync --extra audio         # a development environment
 uv run pytest                 # the full suite
 uv run python scripts/demo.py # the real TUI against stub model servers
 ```

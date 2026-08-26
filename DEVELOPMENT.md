@@ -7,7 +7,11 @@ uv sync --extra audio          # omit --extra audio if PortAudio isn't available
 uv run lectern doctor          # see what your machine is missing
 ```
 
-`uv run lectern` launches the app. `uv run pytest` runs the suite.
+`uv run lectern` launches the app from the checkout. `uv run pytest` runs the suite.
+
+To get a `lectern` command on your PATH that tracks this checkout, run
+`./scripts/install.sh` (or `uv tool install --editable . --with sounddevice`).
+It installs in editable mode, so `git pull` updates the installed command.
 
 Set `LECTERN_HOME=/tmp/lectern-dev` to redirect config, sessions and logs
 somewhere disposable — the test suite does exactly this.
@@ -110,6 +114,10 @@ Lectern knows system audio involves a subprocess.
   callback) or for blocking syscalls via `asyncio.to_thread`.
 - **No cloud fallbacks, ever.** `LLMBackend` implementations must be local. If
   the local model is unavailable, keep transcribing and tell the user.
+- **`lectern` is the only command a user should need.** whisper.cpp is spawned
+  per session; Ollama is started by `ensure_ollama_running` when it is installed
+  but not answering. Never auto-start anything for a non-local host, and never
+  install software without explicit confirmation.
 - **Expected errors become dialogs.** A missing permission, a dead daemon or a
   full disk is a message the user can act on, never a traceback over the TUI.
 - **The transcript outranks everything.** Any change that risks transcript

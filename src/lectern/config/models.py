@@ -54,6 +54,10 @@ class OllamaConfig(_Base):
     #: Context window requested from Ollama for note updates.
     num_ctx: int = Field(default=8192, ge=2048)
     keep_alive: str = "10m"
+    #: Start a local Ollama daemon automatically if one is not already running,
+    #: so `lectern` alone is enough to get a working session. Only ever applies
+    #: to a localhost host and only when the `ollama` binary is installed.
+    autostart: bool = True
 
     @field_validator("host")
     @classmethod

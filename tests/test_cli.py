@@ -159,3 +159,24 @@ def test_record_rejects_a_missing_file():
     result = runner.invoke(cli_app, ["record", "--file", "/nonexistent/lecture.wav"])
     assert result.exit_code == 1
     assert "No such file" in result.output
+
+
+def test_config_show_keeps_section_headers():
+    """Rich markup used to swallow every [section] header in the output."""
+    runner.invoke(cli_app, ["config", "init"])
+    result = runner.invoke(cli_app, ["config"])
+    assert result.exit_code == 0
+    for section in ("[transcription]", "[ollama]", "[notes]", "[audio]", "[ui]"):
+        assert section in result.stdout
+
+
+def test_session_titles_with_brackets_survive_listing(manager):
+    """A title is user data, not markup: it must appear verbatim."""
+    meta, store = manager.create(title="MATH 200 [Section 3] Vectors")
+    store.close()
+    manager.reindex()
+    manager.close()
+
+    result = runner.invoke(cli_app, ["sessions"])
+    assert result.exit_code == 0
+    assert "Section 3" in result.stdout

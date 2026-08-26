@@ -124,11 +124,11 @@ def list_sessions(
         for meta in sessions:
             table.add_row(
                 format_relative(meta.created_at),
-                meta.display_title,
-                meta.course or "—",
+                Text(meta.display_title),
+                Text(meta.course or "—"),
                 format_duration(meta.duration_seconds),
                 f"{meta.word_count:,}",
-                meta.id,
+                Text(meta.id),
             )
         console.print(table)
     finally:
@@ -205,7 +205,10 @@ def export(
             error_console.print(f"[red]Session folder missing for[/] {meta.id}")
             raise typer.Exit(1)
         path = export_session(loaded, format_id=format, destination=out)
-        console.print(f"[green]Exported[/] {meta.display_title} → {path}", soft_wrap=True)
+        message = Text("Exported ", style="green")
+        message.append(meta.display_title)
+        message.append(f" → {path}")
+        console.print(message, soft_wrap=True)
     finally:
         manager.close()
 
@@ -274,7 +277,7 @@ def _print_whisper_models() -> None:
                 status.append("  (selected)", style="dim")
         else:
             status = Text("not installed", style="dim")
-        table.add_row(model.name, model.size_label, status)
+        table.add_row(Text(model.name), model.size_label, status)
     console.print(table)
     console.print(f"[dim]Downloaded models live in {paths.whisper_models_dir()}[/]", soft_wrap=True)
 
@@ -308,7 +311,9 @@ def _print_ollama_models() -> None:
             roles.append("live notes")
         if model.name == (config.ollama.final_model or config.ollama.notes_model):
             roles.append("final notes")
-        table.add_row(model.name, model.size_label, model.detail, ", ".join(roles) or "—")
+        table.add_row(
+            Text(model.name), model.size_label, Text(model.detail), ", ".join(roles) or "—"
+        )
     console.print(table)
 
 
@@ -352,8 +357,14 @@ def config_callback(ctx: typer.Context) -> None:
         return
     path = paths.config_file()
     if path.exists():
+        from rich.syntax import Syntax
+
         console.print(f"[dim]{path}[/]\n", soft_wrap=True)
-        console.print(path.read_text(encoding="utf-8"))
+        # Rendered as syntax, not as a print: Rich would otherwise read the
+        # [section] headers as markup tags and drop them from the output.
+        console.print(
+            Syntax(path.read_text(encoding="utf-8"), "toml", theme="ansi_dark", background_color="default")
+        )
     else:
         console.print("[dim]No config file yet — defaults are in use.[/]")
         console.print(f"[dim]It will be created at {path}[/]", soft_wrap=True)

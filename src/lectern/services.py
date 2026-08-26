@@ -57,6 +57,9 @@ class AppServices:
     _manager: SessionManager | None = field(default=None, repr=False)
     _llm: LLMBackend | None = field(default=None, repr=False)
     _llm_health: LLMHealth | None = field(default=None, repr=False)
+    #: Auto-start is attempted at most once per run, so a machine without
+    #: Ollama does not pay the probe on every health refresh.
+    _autostart_attempted: bool = field(default=False, repr=False)
 
     @classmethod
     def create(cls, *, config_path: Path | None = None) -> AppServices:
@@ -82,9 +85,23 @@ class AppServices:
         return self._llm
 
     async def refresh_llm_health(self) -> LLMHealth:
-        """Re-probe Ollama and cache the result for the Home screen."""
-        self._llm_health = await self.llm.health()
-        return self._llm_health
+        """Re-probe Ollama, starting it first if it is installed but not running.
+
+        This is what makes ``lectern`` self-sufficient: whisper.cpp is spawned
+        per session by the transcription backend, and the note model's daemon
+        is brought up here, so the user never has to start anything by hand.
+        """
+        health = await self.llm.health()
+
+        if not health.available and self.config.ollama.autostart and not self._autostart_attempted:
+            self._autostart_attempted = True
+            from lectern.llm.ollama import ensure_ollama_running
+
+            if await ensure_ollama_running(self.config.ollama.host):
+                health = await self.llm.health()
+
+        self._llm_health = health
+        return health
 
     @property
     def llm_health(self) -> LLMHealth | None:

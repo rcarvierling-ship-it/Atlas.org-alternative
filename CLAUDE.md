@@ -65,6 +65,14 @@ Whisper, which is where hallucinations come from.
 typed notes work on an 8B model. `llm/parsing.py` then recovers JSON from
 `<think>` blocks and fences. An unparseable response must leave notes untouched.
 
+**`lectern` alone must be enough to start everything.** whisper.cpp is spawned
+per session by the transcription backend; Ollama is started by
+`ensure_ollama_running` (called once per run from `AppServices.refresh_llm_health`)
+when it is installed but not answering. It refuses for a non-local host and for a
+missing binary, and `doctor` never starts anything — diagnostics report state,
+they don't change it. `scripts/install.sh` puts the command on PATH via
+`uv tool install --editable`.
+
 ## Testing
 
 `uv run pytest` — ~1 minute, 142 tests, all passing.
