@@ -75,13 +75,19 @@ they don't change it. `scripts/install.sh` puts the command on PATH via
 
 ## Testing
 
-`uv run pytest` — ~2 minutes, 200 tests, all passing. `uv run ruff check .` must be clean.
+`uv run pytest` — ~90 seconds, 202 tests, all passing. `uv run ruff check .` must be clean.
 
 The pipeline and acceptance tests run the **production code path** with only the
 two model servers faked (`tests/fakes.py` speaks the real protocols). If you
 change the pipeline, `tests/test_pipeline.py` and `tests/test_acceptance.py` are
 what will actually catch it. `test_acceptance.py` is the product spec's manual
 checklist, automated end to end through the UI.
+
+A test must not depend on what the developer's machine has installed. Three CLI
+tests asserted on the real environment — doctor's exit code, whether `small.en`
+was present, whether Ollama answered on localhost — so they were green on this
+bare Linux box and would have gone **red on a properly set up Mac**, which is
+backwards. Stub the probe and assert on the command's behaviour instead.
 
 A regression test has to be able to *fail*. Two here could not, and both were
 written to guard bugs that had already shipped: `assert not hasattr(type(screen),
@@ -136,7 +142,7 @@ no whisper.cpp on the build machine). What that means:
 
 - **Verified by running:** the whole Python application — TUI, pipeline, VAD,
   scheduler, merge logic, persistence, recovery, search, exports, CLI — against
-  protocol-level fakes and a WAV fixture. 200 tests pass.
+  protocol-level fakes and a WAV fixture. 202 tests pass.
 - **Not executed here:** real whisper.cpp, real Ollama, CoreAudio microphone
   capture, and the Swift ScreenCaptureKit helper (`native/audio-capture/`, never
   compiled — there is no Swift toolchain on this machine).

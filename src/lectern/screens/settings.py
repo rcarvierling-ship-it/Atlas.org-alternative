@@ -7,7 +7,10 @@ the app configured for a model that does not exist.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from textual import on, work
+from textual.binding import BindingType
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
@@ -26,7 +29,7 @@ THEME_OPTIONS = [("Lectern Dark", "lectern-dark"), ("Lectern Light", "lectern-li
 class SettingsScreen(Screen):
     """Edit configuration."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "back", "Back"),
         ("ctrl+s", "save", "Save"),
     ]

@@ -37,7 +37,7 @@ def resample(audio: np.ndarray, source_rate: int, target_rate: int = TARGET_SAMP
         audio = _lowpass(audio, cutoff=target_rate / 2.0, sample_rate=source_rate)
 
     duration = audio.size / source_rate
-    out_samples = int(round(duration * target_rate))
+    out_samples = round(duration * target_rate)
     if out_samples <= 0:
         return np.zeros(0, dtype=np.float32)
 

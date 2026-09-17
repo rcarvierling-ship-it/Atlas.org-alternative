@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rich.text import Text
 from textual import on, work
+from textual.binding import BindingType
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.screen import Screen
@@ -52,7 +55,7 @@ def _highlight(snippet: str) -> Text:
 class SearchScreen(Screen):
     """Search transcripts and notes."""
 
-    BINDINGS = [("escape", "back", "Back")]
+    BINDINGS: ClassVar[list[BindingType]] = [("escape", "back", "Back")]
 
     def compose(self) -> ComposeResult:
         with Vertical(id="settings-body"):

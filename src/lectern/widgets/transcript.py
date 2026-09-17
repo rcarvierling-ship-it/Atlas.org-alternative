@@ -15,8 +15,11 @@ words.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.binding import BindingType
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Static
@@ -79,7 +82,7 @@ class SegmentLine(Static):
 class TranscriptView(VerticalScroll):
     """Scrollable transcript with follow-live behaviour."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("f", "follow_live", "Follow live"),
         ("g", "scroll_home", "Top"),
         ("G", "follow_live", "Live"),

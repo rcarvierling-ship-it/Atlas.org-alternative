@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rich.text import Text
 from textual import on, work
+from textual.binding import BindingType
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -80,7 +83,7 @@ class StatusRow(Static):
 class HomeScreen(Screen):
     """The landing screen."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("n", "new_session", "New session"),
         ("s", "browse_sessions", "Sessions"),
         ("slash", "search", "Search"),

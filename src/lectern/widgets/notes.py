@@ -12,10 +12,13 @@ is coloured.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rich.console import Group, RenderableType
 from rich.table import Table
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.binding import BindingType
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Static
@@ -104,7 +107,7 @@ class NotesBody(Static):
 class NotesView(VerticalScroll):
     """Scrollable notes pane with the same follow-live contract as the transcript."""
 
-    BINDINGS = [("f", "follow_live", "Follow")]
+    BINDINGS: ClassVar[list[BindingType]] = [("f", "follow_live", "Follow")]
 
     following: reactive[bool] = reactive(True)
     updating: reactive[bool] = reactive(False)

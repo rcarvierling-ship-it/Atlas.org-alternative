@@ -8,8 +8,11 @@ happen next.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rich.text import Text
 from textual import on
+from textual.binding import BindingType
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
@@ -26,7 +29,7 @@ def _literal(value: str) -> Text:
 class ConfirmModal(ModalScreen[bool]):
     """Yes/no confirmation. Escape always means no."""
 
-    BINDINGS = [("escape", "dismiss_false", "Cancel")]
+    BINDINGS: ClassVar[list[BindingType]] = [("escape", "dismiss_false", "Cancel")]
 
     def __init__(
         self,
@@ -71,7 +74,7 @@ class ConfirmModal(ModalScreen[bool]):
 class TextPromptModal(ModalScreen[str | None]):
     """Single-line input, used for quick notes while recording."""
 
-    BINDINGS = [("escape", "cancel", "Cancel")]
+    BINDINGS: ClassVar[list[BindingType]] = [("escape", "cancel", "Cancel")]
 
     def __init__(
         self,
@@ -120,7 +123,7 @@ class TextPromptModal(ModalScreen[str | None]):
 class MessageModal(ModalScreen[None]):
     """Informational dialog with a single dismiss button."""
 
-    BINDINGS = [("escape", "dismiss_modal", "Close"), ("enter", "dismiss_modal", "Close")]
+    BINDINGS: ClassVar[list[BindingType]] = [("escape", "dismiss_modal", "Close"), ("enter", "dismiss_modal", "Close")]
 
     def __init__(self, message: str, *, title: str = "Notice", severity: str = "information") -> None:
         super().__init__()
@@ -156,7 +159,7 @@ afterwards, which is the step users most often miss — so the dialog says so
     explicitly rather than leaving them to rediscover it.
     """
 
-    BINDINGS = [("escape", "dismiss_modal", "Close")]
+    BINDINGS: ClassVar[list[BindingType]] = [("escape", "dismiss_modal", "Close")]
 
     def __init__(self, *, permission: str, message: str, remediation: str) -> None:
         super().__init__()
@@ -188,7 +191,7 @@ afterwards, which is the step users most often miss — so the dialog says so
 class RecoveryModal(ModalScreen[str | None]):
     """Offers Resume / Recover / Finalize / Discard for an interrupted session."""
 
-    BINDINGS = [("escape", "later", "Decide later")]
+    BINDINGS: ClassVar[list[BindingType]] = [("escape", "later", "Decide later")]
 
     def __init__(self, session) -> None:  # noqa: ANN001 - RecoverableSession
         super().__init__()
@@ -285,7 +288,7 @@ class FinalizingModal(ModalScreen[None]):
 class ExportModal(ModalScreen[str | None]):
     """Pick an export format."""
 
-    BINDINGS = [("escape", "cancel", "Cancel")]
+    BINDINGS: ClassVar[list[BindingType]] = [("escape", "cancel", "Cancel")]
 
     def compose(self) -> ComposeResult:
         from lectern.sessions.export import EXPORTERS
@@ -320,7 +323,7 @@ class ExportModal(ModalScreen[str | None]):
 class HelpModal(ModalScreen[None]):
     """Keyboard reference."""
 
-    BINDINGS = [("escape", "dismiss_modal", "Close"), ("question_mark", "dismiss_modal", "Close")]
+    BINDINGS: ClassVar[list[BindingType]] = [("escape", "dismiss_modal", "Close"), ("question_mark", "dismiss_modal", "Close")]
 
     SHORTCUTS: tuple[tuple[str, str, str], ...] = (
         ("Global", "ctrl+p  /", "Command palette"),

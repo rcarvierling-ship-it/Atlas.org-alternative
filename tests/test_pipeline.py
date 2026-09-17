@@ -95,7 +95,7 @@ async def run_session(
 
 async def test_audio_to_transcript_to_notes(manager, fixture_wav, fake_whisper, fake_ollama):
     """The headline path: speech in, transcript and notes out, all persisted."""
-    pipeline, meta, store = await run_session(manager, fixture_wav, fake_whisper, fake_ollama)
+    pipeline, meta, _store = await run_session(manager, fixture_wav, fake_whisper, fake_ollama)
 
     # Transcription happened, one segment per detected utterance.
     assert len(pipeline.segments) == 5
@@ -154,7 +154,7 @@ async def test_markers_reach_notes_transcript_and_prompt(
         pipeline.add_marker(kind=MarkerKind.IMPORTANT)
         pipeline.add_marker(text="Professor said this is on Exam 1", kind=MarkerKind.NOTE)
 
-    pipeline, meta, store = await run_session(
+    pipeline, meta, _store = await run_session(
         manager, fixture_wav, fake_whisper, fake_ollama, on_started=add_markers
     )
 

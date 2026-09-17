@@ -11,10 +11,13 @@ something a note-taking app gets to do.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rich.console import RenderableType
 from rich.table import Table
 from rich.text import Text
 from textual import on, work
+from textual.binding import BindingType
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
@@ -70,7 +73,7 @@ class CheckLine(Static):
 class SetupWizardScreen(Screen):
     """Environment checks, shown on first run and on demand."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "leave", "Back"),
         ("r", "recheck", "Re-run checks"),
     ]

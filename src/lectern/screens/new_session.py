@@ -8,7 +8,10 @@ with the reason shown, rather than silently missing.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from textual import on, work
+from textual.binding import BindingType
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
@@ -31,7 +34,7 @@ AUDIO_SOURCE_OPTIONS = [
 class NewSessionScreen(Screen):
     """Collects the details for a recording, then starts it."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Back"),
         ("ctrl+s", "start", "Start recording"),
     ]

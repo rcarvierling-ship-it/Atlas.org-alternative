@@ -14,10 +14,13 @@ notes are still saved and the review screen offers a retry.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import asyncio
 import contextlib
 
 from textual import work
+from textual.binding import BindingType
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -65,7 +68,7 @@ FINALIZE_STEPS = [
 class RecordingScreen(Screen):
     """Live transcript and live notes for one session."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("space", "toggle_pause", "Pause"),
         ("m", "add_marker", "Marker"),
         ("n", "add_note", "Note"),

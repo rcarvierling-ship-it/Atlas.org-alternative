@@ -8,8 +8,11 @@ synthesis that failed or was never run.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rich.text import Text
 from textual import work
+from textual.binding import BindingType
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
@@ -31,7 +34,7 @@ log = get_logger("screens.review")
 class ReviewScreen(Screen):
     """Read a finished session."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "back", "Back"),
         ("e", "export", "Export"),
         ("r", "retry_final", "Retry final notes"),

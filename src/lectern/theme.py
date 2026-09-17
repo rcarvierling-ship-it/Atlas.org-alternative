@@ -11,6 +11,8 @@ coverage can fall back without touching any widget code
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from textual.theme import Theme
 
 BACKGROUND = "#0e1013"
@@ -90,7 +92,7 @@ THEMES = (LECTERN_DARK, LECTERN_LIGHT)
 class Icons:
     """Glyphs with ASCII fallbacks, selected once at startup."""
 
-    _PAIRS: dict[str, tuple[str, str]] = {
+    _PAIRS: ClassVar[dict[str, tuple[str, str]]] = {
         "record": ("●", "*"),
         "paused": ("❙❙", "||"),
         "stopped": ("■", "#"),

@@ -8,11 +8,13 @@ pipeline, which the recording screen drives.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from collections.abc import Iterable
 from pathlib import Path
 
 from textual.app import App, SystemCommand
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.screen import Screen
 
 from lectern import __version__
@@ -30,7 +32,7 @@ class LecternApp(App[None]):
     CSS_PATH = "lectern.tcss"
     ENABLE_COMMAND_PALETTE = True
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+p", "command_palette", "Commands", show=False, priority=True),
         Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
     ]

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from textual import on
+from textual.binding import BindingType
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.screen import Screen
@@ -15,7 +18,7 @@ from lectern.sessions.models import SessionMeta
 class SessionsScreen(Screen):
     """All sessions, newest first."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "back", "Back"),
         ("slash", "focus_filter", "Filter"),
     ]
