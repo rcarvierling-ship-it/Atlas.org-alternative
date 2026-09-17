@@ -153,9 +153,11 @@ class OllamaBackend(LLMBackend):
         if json_schema is not None:
             body["format"] = json_schema
 
-        client = self._get_client()
         chunks: list[str] = []
         try:
+            # Built inside the guard for the same reason as health(): a
+            # malformed host raises InvalidURL from the constructor.
+            client = self._get_client()
             async with client.stream("POST", "/api/generate", json=body) as response:
                 if response.status_code >= 400:
                     detail = (await response.aread()).decode("utf-8", "replace")[:300]
@@ -174,7 +176,7 @@ class OllamaBackend(LLMBackend):
                     chunks.append(piece)
                     if on_token and piece:
                         on_token(piece)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             raise LLMUnavailableError(f"Ollama request failed: {exc}") from exc
 
         return "".join(chunks).strip()

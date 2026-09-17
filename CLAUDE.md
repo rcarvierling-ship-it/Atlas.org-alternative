@@ -75,7 +75,7 @@ they don't change it. `scripts/install.sh` puts the command on PATH via
 
 ## Testing
 
-`uv run pytest` — ~90 seconds, 202 tests, all passing. `uv run ruff check .` must be clean.
+`uv run pytest` — ~90 seconds, 207 tests, all passing. `uv run ruff check .` must be clean.
 
 The pipeline and acceptance tests run the **production code path** with only the
 two model servers faked (`tests/fakes.py` speaks the real protocols). If you
@@ -142,7 +142,7 @@ no whisper.cpp on the build machine). What that means:
 
 - **Verified by running:** the whole Python application — TUI, pipeline, VAD,
   scheduler, merge logic, persistence, recovery, search, exports, CLI — against
-  protocol-level fakes and a WAV fixture. 202 tests pass.
+  protocol-level fakes and a WAV fixture. 207 tests pass.
 - **Not executed here:** real whisper.cpp, real Ollama, CoreAudio microphone
   capture, and the Swift ScreenCaptureKit helper (`native/audio-capture/`, never
   compiled — there is no Swift toolchain on this machine).

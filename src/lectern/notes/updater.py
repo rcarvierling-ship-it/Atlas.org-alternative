@@ -64,11 +64,15 @@ def apply_update_payload(
             changed = True
 
     if current_topic:
+        # Read this first: add_topic assigns current_topic on both paths, so
+        # comparing afterwards can never detect a switch to a known topic —
+        # which left the header and the persisted state showing the previous
+        # topic until some later update happened to report a change.
+        previous_topic = state.current_topic
         if state.add_topic(current_topic, timestamp=timestamp):
             new_topics.append(current_topic)
             changed = True
-        if state.current_topic != current_topic:
-            state.current_topic = current_topic
+        elif previous_topic != current_topic:
             changed = True
 
     for name in BULLET_FIELDS:

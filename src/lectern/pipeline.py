@@ -328,7 +328,10 @@ class RecordingPipeline:
             if not delivered:
                 log.error("could not deliver the transcription sentinel; cancelling the worker")
                 transcribe_task.cancel()
-            with contextlib.suppress(Exception):
+            # CancelledError derives from BaseException, so a bare
+            # suppress(Exception) would let the cancellation we just requested
+            # escape and skip the teardown below.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await asyncio.wait_for(transcribe_task, timeout=60.0)
 
         for name in ("notes", "persist"):

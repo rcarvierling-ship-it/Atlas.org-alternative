@@ -272,3 +272,54 @@ async def test_stop_completes_promptly_with_a_full_utterance_queue(
     # Well under the 60s timeout that the dropped sentinel used to force.
     assert elapsed < 40.0
     assert pipeline.segments, "queued utterances should still have been transcribed"
+
+
+async def test_stop_finishes_teardown_when_the_sentinel_cannot_be_delivered(
+    manager, fake_whisper, fake_ollama
+):
+    """The cancel path must not abort stop() before cleanup runs.
+
+    asyncio.CancelledError derives from BaseException, so the bare
+    suppress(Exception) guarding the await let the cancellation we had just
+    requested escape — skipping transcriber teardown and the final flush.
+    """
+    from lectern.audio.file_source import FileAudioSource
+    from lectern.pipeline import RecordingPipeline
+    from lectern.transcription.whisper_cpp import WhisperCppBackend
+
+    meta, store = manager.create(title="Undeliverable", whisper_model="small.en")
+    config = LecternConfig()
+    config.transcription.server_url = fake_whisper.url
+
+    pipeline = RecordingPipeline(
+        config=config,
+        source=FileAudioSource("/dev/null"),
+        transcriber=WhisperCppBackend(server_url=fake_whisper.url),
+        llm=None,
+        store=store,
+        meta=meta,
+        save_audio=False,
+    )
+
+    await pipeline.transcriber.start()
+    pipeline.store.open_transcript()
+    pipeline.state = pipeline.state.__class__.RECORDING
+
+    async def never_returns() -> None:
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(never_returns(), name="transcribe")
+    pipeline._tasks = [task]  # noqa: SLF001
+
+    # Force the branch: the sentinel cannot be handed over, so stop() cancels.
+    async def undeliverable(item, *, timeout):  # noqa: ANN001, ARG001
+        return False
+
+    pipeline._enqueue_blocking = undeliverable  # noqa: SLF001
+
+    await asyncio.wait_for(pipeline.stop(), timeout=30.0)
+
+    assert task.cancelled() or task.done()
+    # The teardown after the cancelled await must still have run.
+    assert not pipeline.transcriber.health().ready, "transcriber was left running"
+    assert pipeline._tasks == []  # noqa: SLF001

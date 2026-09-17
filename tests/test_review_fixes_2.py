@@ -522,3 +522,81 @@ def test_mix_keeps_each_gain_with_its_own_track():
     # (0.5), not inherit the dropped track's (0.0).
     mixed = mix(empty, loud, gains=(0.0, 0.5))
     assert mixed == pytest.approx(np.full(4, 0.5, dtype=np.float32))
+
+
+# --- fourth review round ----------------------------------------------------
+
+
+def test_reindex_keeps_a_session_whose_metadata_is_damaged():
+    """A regression introduced by the stale-row purge itself.
+
+    The purge keyed off sessions that loaded successfully, so a folder that is
+    present but has a corrupt session.json — exactly the case recovery exists
+    for — had its index row deleted instead of merely being skipped.
+    """
+    from lectern.sessions.manager import SessionManager
+
+    config = LecternConfig()
+    manager = SessionManager(config)
+    try:
+        healthy, healthy_store = manager.create(title="Readable", course="BIO 113")
+        healthy_store.close()
+        damaged, damaged_store = manager.create(title="Damaged", course="BIO 113")
+        damaged_store.close()
+        assert manager.reindex() == 2
+
+        (damaged.folder / "session.json").write_text("{ not json", encoding="utf-8")
+
+        # One session loads; the damaged one is skipped but must survive.
+        assert manager.reindex() == 1
+        ids = {row.id for row in manager.all_sessions()}
+        assert healthy.id in ids
+        assert damaged.id in ids, "a damaged-but-present session must not be purged"
+    finally:
+        manager.close()
+
+
+def test_switching_back_to_a_known_topic_counts_as_a_change():
+    """add_topic assigns current_topic on both paths, so the caller's
+    after-the-fact comparison could never fire."""
+    from lectern.notes.updater import apply_update_payload
+
+    state = NoteState()
+    apply_update_payload(state, {"current_topic": "Membranes"}, timestamp=1.0)
+    apply_update_payload(state, {"current_topic": "Enzymes"}, timestamp=2.0)
+    before = state.revision
+
+    result = apply_update_payload(state, {"current_topic": "Membranes"}, timestamp=3.0)
+
+    assert result.state.current_topic == "Membranes"
+    assert result.changed is True
+    assert result.state.revision == before + 1
+    # It is a switch, not a discovery: the topic must not be re-reported as new.
+    assert result.new_topics == []
+    assert state.topics.count("Membranes") == 1
+
+
+def test_repeating_the_same_topic_is_not_a_change():
+    """The guard against over-counting the fix above."""
+    from lectern.notes.updater import apply_update_payload
+
+    state = NoteState()
+    apply_update_payload(state, {"current_topic": "Membranes"}, timestamp=1.0)
+    before = state.revision
+
+    result = apply_update_payload(state, {"current_topic": "Membranes"}, timestamp=2.0)
+    assert result.changed is False
+    assert result.state.revision == before
+
+
+def test_generate_reports_a_malformed_host_as_unavailable():
+    """health() and list_models() were fixed for this; generate() was missed,
+    and it is the call every note update makes."""
+    import asyncio
+
+    from lectern.llm.base import LLMUnavailableError
+    from lectern.llm.ollama import OllamaBackend
+
+    backend = OllamaBackend("http://[::1")
+    with pytest.raises(LLMUnavailableError):
+        asyncio.run(backend.generate("prompt", model="qwen3:8b"))

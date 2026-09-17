@@ -148,7 +148,6 @@ class SessionManager:
         ``delete()`` leaves a ghost row that lists but cannot be opened.
         """
         found = 0
-        seen: set[str] = set()
         for folder in sorted(self.root.iterdir()) if self.root.exists() else []:
             if not folder.is_dir() or not (folder / "session.json").exists():
                 continue
@@ -170,12 +169,16 @@ class SessionManager:
                 transcript=" ".join(segment.text for segment in segments),
                 notes=final or store.load_live_notes_markdown(),
             )
-            seen.add(meta.id)
             found += 1
 
-        for stale in [meta.id for meta in self._index.list_sessions() if meta.id not in seen]:
-            log.info("dropping index row for missing session %s", stale)
-            self._index.remove(stale)
+        # Purge by whether the folder is still on disk, NOT by which ones
+        # loaded: a session with a damaged session.json is skipped above, and
+        # keying off the successful loads would delete the index row for a
+        # session whose data is still there and recoverable.
+        for indexed in self._index.list_sessions():
+            if not (indexed.folder / "session.json").exists():
+                log.info("dropping index row for missing session %s", indexed.id)
+                self._index.remove(indexed.id)
 
         log.info("reindexed %d sessions", found)
         return found

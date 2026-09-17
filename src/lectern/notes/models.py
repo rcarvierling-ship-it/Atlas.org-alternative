@@ -251,7 +251,13 @@ class NoteState:
         return MergeCounts(added, upgraded)
 
     def add_topic(self, topic: str, *, timestamp: float = 0.0) -> bool:
-        """Record a topic and, if it is new, drop a timeline entry for it."""
+        """Record a topic and, if it is new, drop a timeline entry for it.
+
+        Returns whether the topic was *new*, which is what the caller reports
+        as ``new_topics``. Note this also moves ``current_topic`` even when the
+        topic is already known, so a caller that needs to detect a switch has
+        to read the previous value before calling — see ``apply_update_payload``.
+        """
         topic = topic.strip()
         if not topic:
             return False
